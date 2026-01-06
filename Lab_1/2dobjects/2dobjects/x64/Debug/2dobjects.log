@@ -1,0 +1,10 @@
+﻿  2D_Transformation_and_OpenGL_Primitives.cpp
+E:\My Courses\CSE 4208\2k20\Lab_1\codes\2D_Transformation_and_OpenGL_Primitives.cpp(261,22): warning C4305: '+=': truncation from 'double' to 'float'
+E:\My Courses\CSE 4208\2k20\Lab_1\codes\2D_Transformation_and_OpenGL_Primitives.cpp(265,22): warning C4305: '-=': truncation from 'double' to 'float'
+E:\My Courses\CSE 4208\2k20\Lab_1\codes\2D_Transformation_and_OpenGL_Primitives.cpp(269,22): warning C4305: '+=': truncation from 'double' to 'float'
+E:\My Courses\CSE 4208\2k20\Lab_1\codes\2D_Transformation_and_OpenGL_Primitives.cpp(273,22): warning C4305: '-=': truncation from 'double' to 'float'
+E:\My Courses\CSE 4208\2k20\Lab_1\codes\2D_Transformation_and_OpenGL_Primitives.cpp(277,18): warning C4305: '+=': truncation from 'double' to 'float'
+E:\My Courses\CSE 4208\2k20\Lab_1\codes\2D_Transformation_and_OpenGL_Primitives.cpp(281,18): warning C4305: '-=': truncation from 'double' to 'float'
+E:\My Courses\CSE 4208\2k20\Lab_1\codes\2D_Transformation_and_OpenGL_Primitives.cpp(285,18): warning C4305: '+=': truncation from 'double' to 'float'
+E:\My Courses\CSE 4208\2k20\Lab_1\codes\2D_Transformation_and_OpenGL_Primitives.cpp(289,18): warning C4305: '-=': truncation from 'double' to 'float'
+  2dobjects.vcxproj -> E:\My Courses\CSE 4208\2k20\Lab_1\2dobjects\x64\Debug\2dobjects.exe
