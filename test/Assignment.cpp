@@ -16,7 +16,6 @@ const float PI = 3.14159265359f;
 bool isDisassembled = false;
 bool dKeyPressed = false;  // Changed from T to D for disassembly
 bool rKeyPressed = false;
-bool sKeyPressed = false;
 float rotationAngle = 0.0f;   // Rotation angle in radians
 float scaleFactor = 1.0f;     // Scale factor
 float translateX = 0.0f;      // Translation X
@@ -415,7 +414,7 @@ int main()
     std::cout << "Controls:" << std::endl;
     std::cout << "  D - Toggle disassembly view" << std::endl;
     std::cout << "  R - Rotate (15 degrees each press)" << std::endl;
-    std::cout << "  S - Scale (cycles: 0.5x -> 1.0x -> 1.5x -> 2.0x)" << std::endl;
+    std::cout << "  + / - : Zoom In / Out" << std::endl;
     std::cout << "  Arrow Keys - Translate (move the plane)" << std::endl;
     std::cout << "  ESC - Exit" << std::endl;
     
@@ -424,7 +423,16 @@ int main()
     int scaleLoc = glGetUniformLocation(shaderProgram, "scale");
     int translationLoc = glGetUniformLocation(shaderProgram, "translation");
 
+    // Timing
+    float deltaTime = 0.0f;	
+    float lastFrame = 0.0f;
+
     while (!glfwWindowShouldClose(window)) {
+        // Calculate time logic
+        float currentFrame = glfwGetTime();
+        deltaTime = currentFrame - lastFrame;
+        lastFrame = currentFrame;
+
         // Process input
         if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
             glfwSetWindowShouldClose(window, true);
@@ -461,33 +469,35 @@ int main()
             rKeyPressed = false;
         }
         
-        // Scale with S key - cycles through scale values
-        if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) {
-            if (!sKeyPressed) {
-                sKeyPressed = true;
-                if (scaleFactor < 0.75f) scaleFactor = 1.0f;
-                else if (scaleFactor < 1.25f) scaleFactor = 1.5f;
-                else if (scaleFactor < 1.75f) scaleFactor = 2.0f;
-                else scaleFactor = 0.5f;
-                std::cout << "Scale: " << scaleFactor << "x" << std::endl;
-            }
-        } else {
-            sKeyPressed = false;
+        // Scale with + and - keys
+        // Use deltaTime to ensure consistent speed (e.g., 1.0 unit per second)
+        float scaleSpeed = 1.5f * deltaTime; 
+        
+        if (glfwGetKey(window, GLFW_KEY_EQUAL) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_KP_ADD) == GLFW_PRESS) {
+            scaleFactor += scaleSpeed;
+            if (scaleFactor > 3.0f) scaleFactor = 3.0f; 
+        }
+        if (glfwGetKey(window, GLFW_KEY_MINUS) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_KP_SUBTRACT) == GLFW_PRESS) {
+            scaleFactor -= scaleSpeed;
+            if (scaleFactor < 0.1f) scaleFactor = 0.1f; 
         }
         
-        // Translation with Arrow keys
-        float translateSpeed = 0.02f;
+        // Translation with Arrow keys (Bounded to screen)
+        // Use deltaTime to ensure consistent speed (e.g., 0.8 units per second)
+        float translateSpeed = 0.8f * deltaTime;
+        float boundary = 1.0f;
+        
         if (glfwGetKey(window, GLFW_KEY_UP) == GLFW_PRESS) {
-            translateY += translateSpeed;
+            if (translateY < boundary) translateY += translateSpeed;
         }
         if (glfwGetKey(window, GLFW_KEY_DOWN) == GLFW_PRESS) {
-            translateY -= translateSpeed;
+            if (translateY > -boundary) translateY -= translateSpeed;
         }
         if (glfwGetKey(window, GLFW_KEY_LEFT) == GLFW_PRESS) {
-            translateX -= translateSpeed;
+            if (translateX > -boundary) translateX -= translateSpeed;
         }
         if (glfwGetKey(window, GLFW_KEY_RIGHT) == GLFW_PRESS) {
-            translateX += translateSpeed;
+            if (translateX < boundary) translateX += translateSpeed;
         }
         
         // Render
