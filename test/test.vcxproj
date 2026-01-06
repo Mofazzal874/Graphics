@@ -130,7 +130,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="..\..\installation-20251216T165350Z-1-001\glad\src\glad.c" />
-    <ClCompile Include="WindowCreationTajSir.cpp" />
+    <ClCompile Include="Assignment.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
