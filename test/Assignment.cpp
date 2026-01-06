@@ -3,7 +3,11 @@
 
 #include <iostream>
 #include <cmath>
+#include <iostream>
+#include <cmath>
 #include <vector>
+
+#include "Shader.h"
 
 void framebuffer_size_callback(GLFWwindow* window, int width, int height);
 void processInput(GLFWwindow* window);
@@ -20,47 +24,6 @@ float rotationAngle = 0.0f;   // Rotation angle in radians
 float scaleFactor = 1.0f;     // Scale factor
 float translateX = 0.0f;      // Translation X
 float translateY = 0.0f;      // Translation Y
-
-const char* vertexShaderSource = R"(
-#version 330 core
-layout (location = 0) in vec3 aPos;
-layout (location = 1) in vec3 aColor;
-out vec3 ourColor;
-
-uniform float rotation;    // Rotation angle in radians
-uniform float scale;       // Scale factor
-uniform vec2 translation;  // Translation offset
-
-void main()
-{
-    // Apply scale first
-    float scaledX = aPos.x * scale;
-    float scaledY = aPos.y * scale;
-    
-    // Then apply rotation
-    float cosR = cos(rotation);
-    float sinR = sin(rotation);
-    float rotatedX = scaledX * cosR - scaledY * sinR;
-    float rotatedY = scaledX * sinR + scaledY * cosR;
-    
-    // Finally apply translation
-    float finalX = rotatedX + translation.x;
-    float finalY = rotatedY + translation.y;
-    
-    gl_Position = vec4(finalX, finalY, aPos.z, 1.0);
-    ourColor = aColor;
-}
-)";
-
-const char* fragmentShaderSource = R"(
-#version 330 core
-out vec4 FragColor;
-in vec3 ourColor;
-void main()
-{
-    FragColor = vec4(ourColor, 1.0);
-}
-)";
 
 // Helper function to add a triangle with offset
 void addTriangle(std::vector<float>& v, 
@@ -375,35 +338,8 @@ int main()
         return -1;
     }
 
-    unsigned int vertexShader = glCreateShader(GL_VERTEX_SHADER);
-    glShaderSource(vertexShader, 1, &vertexShaderSource, NULL);
-    glCompileShader(vertexShader);
-    
-    int success;
-    char infoLog[512];
-    glGetShaderiv(vertexShader, GL_COMPILE_STATUS, &success);
-    if (!success) {
-        glGetShaderInfoLog(vertexShader, 512, NULL, infoLog);
-        std::cout << "Vertex shader error: " << infoLog << std::endl;
-    }
-    
-    unsigned int fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
-    glShaderSource(fragmentShader, 1, &fragmentShaderSource, NULL);
-    glCompileShader(fragmentShader);
-    
-    glGetShaderiv(fragmentShader, GL_COMPILE_STATUS, &success);
-    if (!success) {
-        glGetShaderInfoLog(fragmentShader, 512, NULL, infoLog);
-        std::cout << "Fragment shader error: " << infoLog << std::endl;
-    }
-    
-    unsigned int shaderProgram = glCreateProgram();
-    glAttachShader(shaderProgram, vertexShader);
-    glAttachShader(shaderProgram, fragmentShader);
-    glLinkProgram(shaderProgram);
-    
-    glDeleteShader(vertexShader);
-    glDeleteShader(fragmentShader);
+    // Build and compile our shader program
+    Shader ourShader("shader.vs", "shader.fs");
 
     unsigned int VBO, VAO;
     glGenVertexArrays(1, &VAO);
@@ -429,10 +365,10 @@ int main()
     std::cout << "  Arrow Keys - Translate (move the plane)" << std::endl;
     std::cout << "  ESC - Exit" << std::endl;
     
-    // Get uniform locations
-    int rotationLoc = glGetUniformLocation(shaderProgram, "rotation");
-    int scaleLoc = glGetUniformLocation(shaderProgram, "scale");
-    int translationLoc = glGetUniformLocation(shaderProgram, "translation");
+    // Get uniform locations - NO LONGER NEEDED with Shader class
+    // int rotationLoc = glGetUniformLocation(shaderProgram, "rotation");
+    // int scaleLoc = glGetUniformLocation(shaderProgram, "scale");
+    // int translationLoc = glGetUniformLocation(shaderProgram, "translation");
 
     // Timing
     float deltaTime = 0.0f;	
@@ -515,12 +451,13 @@ int main()
         glClearColor(0.98f, 0.98f, 0.99f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT);
 
-        glUseProgram(shaderProgram);
+        ourShader.use();
         
         // Set all transformation uniforms
-        glUniform1f(rotationLoc, rotationAngle);
-        glUniform1f(scaleLoc, scaleFactor);
-        glUniform2f(translationLoc, translateX, translateY);
+        // Set all transformation uniforms via Shader class
+        ourShader.setFloat("rotation", rotationAngle);
+        ourShader.setFloat("scale", scaleFactor);
+        ourShader.setVec2("translation", translateX, translateY);
         
         glBindVertexArray(VAO);
         glDrawArrays(GL_TRIANGLES, 0, vertices.size() / 6);
@@ -531,7 +468,6 @@ int main()
 
     glDeleteVertexArrays(1, &VAO);
     glDeleteBuffers(1, &VBO);
-    glDeleteProgram(shaderProgram);
     glfwTerminate();
     return 0;
 }
