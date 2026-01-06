@@ -146,25 +146,36 @@ void buildAeroplane(std::vector<float>& v, bool exploded) {
     
     float sOff = 0.018f;
     
-    // Component offsets for exploded view
-    float leftWingOffX = exploded ? -0.35f : 0.0f;
-    float leftWingOffY = exploded ? 0.15f : 0.0f;
-    float rightWingOffX = exploded ? 0.35f : 0.0f;
-    float rightWingOffY = exploded ? 0.15f : 0.0f;
-    float leftTailOffX = exploded ? -0.25f : 0.0f;
-    float leftTailOffY = exploded ? -0.20f : 0.0f;
-    float rightTailOffX = exploded ? 0.25f : 0.0f;
-    float rightTailOffY = exploded ? -0.20f : 0.0f;
+    // Component offsets for exploded view - TIGHTER SPREAD
+    float leftWingOffX = exploded ? -0.20f : 0.0f;     // Was -0.35
+    float leftWingOffY = exploded ? 0.08f : 0.0f;      // Was 0.15
+    float rightWingOffX = exploded ? 0.20f : 0.0f;     // Was 0.35
+    float rightWingOffY = exploded ? 0.08f : 0.0f;     // Was 0.15
+    
+    float leftTailOffX = exploded ? -0.15f : 0.0f;     // Was -0.25
+    float leftTailOffY = exploded ? -0.12f : 0.0f;     // Was -0.20
+    float rightTailOffX = exploded ? 0.15f : 0.0f;     // Was 0.25
+    float rightTailOffY = exploded ? -0.12f : 0.0f;    // Was -0.20
+    
     float fuselageOffX = exploded ? 0.0f : 0.0f;
     float fuselageOffY = exploded ? 0.0f : 0.0f;
-    float leftEngineOffX = exploded ? -0.30f : 0.0f;
-    float leftEngineOffY = exploded ? 0.35f : 0.0f;
-    float rightEngineOffX = exploded ? 0.30f : 0.0f;
-    float rightEngineOffY = exploded ? 0.35f : 0.0f;
+    
+    float noseOffX = exploded ? 0.0f : 0.0f;
+    float noseOffY = exploded ? 0.15f : 0.0f;          // Was 0.25
+    
+    float rearTailOffX = exploded ? 0.0f : 0.0f;
+    float rearTailOffY = exploded ? -0.15f : 0.0f;     // Was -0.25
+    
+    float leftEngineOffX = exploded ? -0.18f : 0.0f;   // Was -0.30
+    float leftEngineOffY = exploded ? 0.20f : 0.0f;    // Was 0.35
+    float rightEngineOffX = exploded ? 0.18f : 0.0f;   // Was 0.30
+    float rightEngineOffY = exploded ? 0.20f : 0.0f;   // Was 0.35
+    
     float vertStabOffX = exploded ? 0.0f : 0.0f;
-    float vertStabOffY = exploded ? -0.25f : 0.0f;
+    float vertStabOffY = exploded ? -0.28f : 0.0f;     // Was -0.45
+    
     float cockpitOffX = exploded ? 0.0f : 0.0f;
-    float cockpitOffY = exploded ? 0.30f : 0.0f;
+    float cockpitOffY = exploded ? 0.15f : 0.0f;       // Was 0.25
     
     // Skip shadows in exploded view for clarity
     if (!exploded) {
@@ -272,10 +283,10 @@ void buildAeroplane(std::vector<float>& v, bool exploded) {
     addQuad(v, fuselageW-stripW, fuselageTop, fuselageW, fuselageTop,
             fuselageW, fuselageBot, fuselageW-stripW, fuselageBot, edgeR, edgeG, edgeB, fuselageOffX, fuselageOffY);
     
-    // Pointed nose
-    addNose(v, 0.0f, fuselageTop, fuselageW, noseHeight, 20, bodyR, bodyG, bodyB, fuselageOffX, fuselageOffY);
-    // Pointed tail
-    addTail(v, 0.0f, fuselageBot, fuselageW*0.7f, tailHeight, 16, bodyR, bodyG, bodyB, fuselageOffX, fuselageOffY);
+    // Pointed nose (Moves independently now)
+    addNose(v, 0.0f, fuselageTop, fuselageW, noseHeight, 20, bodyR, bodyG, bodyB, noseOffX, noseOffY);
+    // Pointed tail (Moves independently now)
+    addTail(v, 0.0f, fuselageBot, fuselageW*0.7f, tailHeight, 16, bodyR, bodyG, bodyB, rearTailOffX, rearTailOffY);
     
     // =====================================================================
     // LAYER 6: COCKPIT WINDOWS
