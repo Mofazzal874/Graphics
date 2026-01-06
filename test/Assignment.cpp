@@ -12,18 +12,31 @@ const unsigned int SCR_WIDTH = 800;
 const unsigned int SCR_HEIGHT = 600;
 const float PI = 3.14159265359f;
 
-// Global state for disassembly view
+// Global state for transformations
 bool isDisassembled = false;
 bool tKeyPressed = false;
+bool rKeyPressed = false;
+float rotationAngle = 0.0f;  // Rotation angle in radians
 
 const char* vertexShaderSource = R"(
 #version 330 core
 layout (location = 0) in vec3 aPos;
 layout (location = 1) in vec3 aColor;
 out vec3 ourColor;
+
+uniform float rotation;  // Rotation angle in radians
+
 void main()
 {
-    gl_Position = vec4(aPos, 1.0);
+    // 2D rotation matrix
+    float cosR = cos(rotation);
+    float sinR = sin(rotation);
+    
+    // Apply rotation around center (0, 0)
+    float rotatedX = aPos.x * cosR - aPos.y * sinR;
+    float rotatedY = aPos.x * sinR + aPos.y * cosR;
+    
+    gl_Position = vec4(rotatedX, rotatedY, aPos.z, 1.0);
     ourColor = aColor;
 }
 )";
@@ -388,7 +401,11 @@ int main()
     glEnableVertexAttribArray(1);
 
     std::cout << "Press T to toggle disassembly view" << std::endl;
+    std::cout << "Press R to rotate the plane (15 degrees each press)" << std::endl;
     std::cout << "Press ESC to exit" << std::endl;
+    
+    // Get the rotation uniform location
+    int rotationLoc = glGetUniformLocation(shaderProgram, "rotation");
 
     while (!glfwWindowShouldClose(window)) {
         // Process input
@@ -415,11 +432,27 @@ int main()
             tKeyPressed = false;
         }
         
+        // Rotate with R key
+        if (glfwGetKey(window, GLFW_KEY_R) == GLFW_PRESS) {
+            if (!rKeyPressed) {
+                rKeyPressed = true;
+                rotationAngle += PI / 12.0f;  // Rotate by 15 degrees
+                if (rotationAngle >= 2 * PI) rotationAngle -= 2 * PI;
+                std::cout << "Rotation: " << (rotationAngle * 180.0f / PI) << " degrees" << std::endl;
+            }
+        } else {
+            rKeyPressed = false;
+        }
+        
         // Render
         glClearColor(0.98f, 0.98f, 0.99f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT);
 
         glUseProgram(shaderProgram);
+        
+        // Set the rotation uniform
+        glUniform1f(rotationLoc, rotationAngle);
+        
         glBindVertexArray(VAO);
         glDrawArrays(GL_TRIANGLES, 0, vertices.size() / 6);
 
