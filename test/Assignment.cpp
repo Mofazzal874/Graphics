@@ -132,11 +132,11 @@ void buildAeroplane(std::vector<float>& v) {
     addTriangle(v, 0.06f+sOff, 0.15f-sOff, 0.06f+sOff, -0.02f-sOff, 0.50f+sOff, -0.08f-sOff, shadowR, shadowG, shadowB);
     addTriangle(v, 0.06f+sOff, -0.02f-sOff, 0.50f+sOff, -0.12f-sOff, 0.50f+sOff, -0.08f-sOff, shadowR, shadowG, shadowB);
     
-    // Tail wing shadows - trapezoid shape
-    addTriangle(v, -0.05f-sOff, -0.48f-sOff, -0.05f-sOff, -0.54f-sOff, -0.20f-sOff, -0.54f-sOff, shadowR, shadowG, shadowB);
-    addTriangle(v, -0.05f-sOff, -0.54f-sOff, -0.20f-sOff, -0.58f-sOff, -0.20f-sOff, -0.54f-sOff, shadowR, shadowG, shadowB);
-    addTriangle(v, 0.05f+sOff, -0.48f-sOff, 0.05f+sOff, -0.54f-sOff, 0.20f+sOff, -0.54f-sOff, shadowR, shadowG, shadowB);
-    addTriangle(v, 0.05f+sOff, -0.54f-sOff, 0.20f+sOff, -0.58f-sOff, 0.20f+sOff, -0.54f-sOff, shadowR, shadowG, shadowB);
+    // Tail wing shadows - TRUE trapezoid (root wide, tip narrow)
+    addTriangle(v, -0.04f-sOff, -0.50f-sOff, -0.04f-sOff, -0.56f-sOff, -0.18f-sOff, -0.56f-sOff, shadowR, shadowG, shadowB);
+    addTriangle(v, -0.04f-sOff, -0.56f-sOff, -0.18f-sOff, -0.58f-sOff, -0.18f-sOff, -0.56f-sOff, shadowR, shadowG, shadowB);
+    addTriangle(v, 0.04f+sOff, -0.50f-sOff, 0.04f+sOff, -0.56f-sOff, 0.18f+sOff, -0.56f-sOff, shadowR, shadowG, shadowB);
+    addTriangle(v, 0.04f+sOff, -0.56f-sOff, 0.18f+sOff, -0.58f-sOff, 0.18f+sOff, -0.56f-sOff, shadowR, shadowG, shadowB);
     
     // =====================================================================
     // LAYER 2: ENGINE NACELLES (positioned at FRONT/TOP of wings)
@@ -181,14 +181,19 @@ void buildAeroplane(std::vector<float>& v) {
     // LAYER 4: HORIZONTAL TAIL WINGS
     // =====================================================================
     
-    // Left tail wing - trapezoid shape
-    float tailRootX = 0.05f;
-    float tailTipX = 0.20f;
-    float tailRootFront = -0.48f;
-    float tailRootBack = -0.54f;
-    float tailTipFront = -0.54f;
-    float tailTipBack = -0.58f;
+    // Left tail wing - TRUE TRAPEZOID: Root is WIDER than Tip
+    float tailRootX = 0.04f;       // X at fuselage
+    float tailTipX = 0.18f;        // X at tip
     
+    // ROOT (at fuselage) - WIDE: 0.06 units wide
+    float tailRootFront = -0.50f;  // Front at root
+    float tailRootBack = -0.56f;   // Back at root (0.06 width)
+    
+    // TIP (outer) - NARROW: 0.02 units wide  
+    float tailTipFront = -0.56f;   // Front at tip (swept back)
+    float tailTipBack = -0.58f;    // Back at tip (0.02 width - NARROWER!)
+    
+    // This creates a TRUE trapezoid: wide at root, narrow at tip
     addTriangle(v, -tailRootX, tailRootFront, -tailRootX, tailRootBack, -tailTipX, tailTipFront, wingR, wingG, wingB);
     addTriangle(v, -tailRootX, tailRootBack, -tailTipX, tailTipBack, -tailTipX, tailTipFront, wingR, wingG, wingB);
     
@@ -227,29 +232,39 @@ void buildAeroplane(std::vector<float>& v) {
     addTail(v, 0.0f, fuselageBot, fuselageW*0.7f, tailHeight, 16, bodyR, bodyG, bodyB);
     
     // =====================================================================
-    // LAYER 7: COCKPIT WINDOWS
+    // LAYER 7: COCKPIT WINDOWS - Filled semicircle arc (like real cockpit)
     // =====================================================================
     
-    addTriangle(v, 0.0f, 0.58f, -0.03f, 0.50f, 0.03f, 0.50f, cockpitR, cockpitG, cockpitB);
+    // Create a filled semicircle arc for the cockpit windshield
+    // This uses many triangles to form a smooth arc shape
+    float cockpitCenterX = 0.0f;
+    float cockpitCenterY = 0.48f;
+    float cockpitRadius = 0.055f;
+    int cockpitSegments = 16;
     
-    // Left side windows
-    addTriangle(v, -0.018f, 0.54f, -0.04f, 0.48f, -0.02f, 0.47f, cockpitR+0.06f, cockpitG+0.06f, cockpitB+0.06f);
-    addTriangle(v, -0.035f, 0.51f, -0.055f, 0.46f, -0.038f, 0.45f, cockpitR+0.06f, cockpitG+0.06f, cockpitB+0.06f);
-    addTriangle(v, -0.05f, 0.48f, -0.068f, 0.44f, -0.052f, 0.43f, cockpitR+0.06f, cockpitG+0.06f, cockpitB+0.06f);
+    // Draw semicircle arc (bottom half facing down) using triangle fan
+    for (int i = 0; i < cockpitSegments; i++) {
+        float angle1 = PI + PI * i / cockpitSegments;        // From PI to 2*PI (bottom half)
+        float angle2 = PI + PI * (i + 1) / cockpitSegments;
+        
+        float x1 = cockpitCenterX + cockpitRadius * cos(angle1);
+        float y1 = cockpitCenterY + cockpitRadius * sin(angle1);
+        float x2 = cockpitCenterX + cockpitRadius * cos(angle2);
+        float y2 = cockpitCenterY + cockpitRadius * sin(angle2);
+        
+        addTriangle(v, cockpitCenterX, cockpitCenterY, x1, y1, x2, y2, cockpitR, cockpitG, cockpitB);
+    }
     
-    // Right side windows
-    addTriangle(v, 0.018f, 0.54f, 0.04f, 0.48f, 0.02f, 0.47f, cockpitR+0.06f, cockpitG+0.06f, cockpitB+0.06f);
-    addTriangle(v, 0.035f, 0.51f, 0.055f, 0.46f, 0.038f, 0.45f, cockpitR+0.06f, cockpitG+0.06f, cockpitB+0.06f);
-    addTriangle(v, 0.05f, 0.48f, 0.068f, 0.44f, 0.052f, 0.43f, cockpitR+0.06f, cockpitG+0.06f, cockpitB+0.06f);
+    // Add the top triangular point of the cockpit window
+    addTriangle(v, 0.0f, 0.56f, -0.055f, 0.48f, 0.055f, 0.48f, cockpitR, cockpitG, cockpitB);
     
     // =====================================================================
     // LAYER 8: VERTICAL STABILIZER (tail fin - rounded rectangle/pill shape)
     // =====================================================================
     
-    // Vertical stabilizer - small rounded rectangle at the tail
-    // This is what you see from above - the thin vertical fin
-    float stabW = 0.022f;   // Half width of stabilizer
-    float stabTop = -0.48f; // Top of stabilizer (towards nose)
+    // Vertical stabilizer - thin rounded rectangle at the tail  
+    float stabW = 0.014f;   // Half width - NARROWER now
+    float stabTop = -0.50f; // Top of stabilizer (towards nose)
     float stabBot = -0.68f; // Bottom of stabilizer
     float stabRad = stabW;  // Radius for rounded ends
     

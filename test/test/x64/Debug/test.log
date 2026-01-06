@@ -1,3 +1,3 @@
 ﻿  Assignment.cpp
-D:\Academics\Graphics\test\Assignment.cpp(365,55): warning C4267: 'argument': conversion from 'size_t' to 'GLsizei', possible loss of data
+D:\Academics\Graphics\test\Assignment.cpp(380,55): warning C4267: 'argument': conversion from 'size_t' to 'GLsizei', possible loss of data
   test.vcxproj -> D:\Academics\Graphics\test\x64\Debug\test.exe
