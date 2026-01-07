@@ -34,5 +34,6 @@
     <None Include="shader.vs">
       <Filter>Resource Files</Filter>
     </None>
+    <None Include="README.md" />
   </ItemGroup>
 </Project>
