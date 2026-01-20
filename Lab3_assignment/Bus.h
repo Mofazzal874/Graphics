@@ -129,13 +129,6 @@ public:
         model = glm::scale(model, glm::vec3(1.0f, 1.8f, 0.08f));
         cube.draw(shader, model, doorColor);
 
-        // Middle door
-        glm::mat4 middleDoorPivot = parent * glm::translate(glm::mat4(1.0f), glm::vec3(1.0f, 0.0f, 1.5f));
-        middleDoorPivot = glm::rotate(middleDoorPivot, glm::radians(middleDoorAngle), glm::vec3(0.0f, 1.0f, 0.0f));
-        model = glm::translate(middleDoorPivot, glm::vec3(0.5f, 0.0f, 0.0f));
-        model = glm::scale(model, glm::vec3(1.0f, 1.8f, 0.08f));
-        cube.draw(shader, model, doorColor);
-
         // ==================== HEADLIGHTS & TAILLIGHTS ====================
         // Headlights (front)
         model = parent * glm::translate(glm::mat4(1.0f), glm::vec3(-5.3f, 0.2f, -1.0f));
