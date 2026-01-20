@@ -7,6 +7,10 @@
 #include <cmath>
 #include <vector>
 
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
+
 #include "Shader.h"
 
 void framebuffer_size_callback(GLFWwindow* window, int width, int height);
@@ -374,6 +378,7 @@ int main()
     float deltaTime = 0.0f;	
     float lastFrame = 0.0f;
 
+    //glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
     while (!glfwWindowShouldClose(window)) {
         // Calculate time logic
         float currentFrame = glfwGetTime();
@@ -454,10 +459,19 @@ int main()
         ourShader.use();
         
         // Set all transformation uniforms
-        // Set all transformation uniforms via Shader class
-        ourShader.setFloat("rotation", rotationAngle);
-        ourShader.setFloat("scale", scaleFactor);
-        ourShader.setVec2("translation", translateX, translateY);
+        // Create transformation matrix
+        glm::mat4 trans = glm::mat4(1.0f);
+        
+        // Order matters: Translate -> Rotate -> Scale (Reverse of logic)
+        // 1. Translate
+        trans = glm::translate(trans, glm::vec3(translateX, translateY, 0.0f));
+        // 2. Rotate (around Z axis)
+        trans = glm::rotate(trans, rotationAngle, glm::vec3(0.0f, 0.0f, 1.0f));
+        // 3. Scale
+        trans = glm::scale(trans, glm::vec3(scaleFactor, scaleFactor, 1.0f));
+        
+        // Pass the matrix to the shader
+        ourShader.setMat4("transform", trans);
         
         glBindVertexArray(VAO);
         glDrawArrays(GL_TRIANGLES, 0, vertices.size() / 6);
