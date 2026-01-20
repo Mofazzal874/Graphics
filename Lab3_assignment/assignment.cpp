@@ -1,193 +1,163 @@
-#include <glad/glad.h> 
-#include <GLFW/glfw3.h> 
+#include <glad/glad.h>
+#include <GLFW/glfw3.h>
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
+#include <iostream>
+#include "Shader.h"
+#include "Bus.h"
 
-#include <iostream> 
+// Settings
+const unsigned int SCR_WIDTH = 1200;
+const unsigned int SCR_HEIGHT = 800;
 
+// Camera
+glm::vec3 cameraPos = glm::vec3(0.0f, 3.0f, 15.0f);
+glm::vec3 cameraFront = glm::vec3(0.0f, 0.0f, -1.0f);
+glm::vec3 cameraUp = glm::vec3(0.0f, 1.0f, 0.0f);
+float deltaTime = 0.0f;
+float lastFrame = 0.0f;
+
+// Global objects
+Bus bus;
+bool fanSpinning = false;
+
+// Function declarations
 void framebuffer_size_callback(GLFWwindow* window, int width, int height);
 void processInput(GLFWwindow* window);
-
-// settings 
-const unsigned int SCR_WIDTH = 800;
-const unsigned int SCR_HEIGHT = 600;
-
-const char* vertexShaderSource = "#version 330 core\n"
-"layout (location = 0) in vec3 aPos;\n"
-"void main()\n"
-"{\n"
-"   gl_Position = vec4(aPos.x, aPos.y, aPos.z, 1.0);\n"
-"}\0";
-const char* fragmentShaderSource = "#version 330 core\n"
-"out vec4 FragColor;\n"
-"void main()\n"
-"{\n"
-"   FragColor = vec4(1.0f, 0.5f, 0.2f, 1.0f);\n"
-"}\n\0";
+void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods);
 
 int main()
 {
-    // glfw: initialize and configure 
-    // ------------------------------ 
+    // GLFW init
     glfwInit();
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
-#ifdef __APPLE__ 
-    glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
-#endif 
-
-    // glfw window creation 
-    // -------------------- 
-    GLFWwindow* window = glfwCreateWindow(SCR_WIDTH, SCR_HEIGHT, "LearnOpenGL",
-        NULL, NULL);
-    if (window == NULL)
-    {
+    GLFWwindow* window = glfwCreateWindow(SCR_WIDTH, SCR_HEIGHT, "Bus Simulation", NULL, NULL);
+    if (window == NULL) {
         std::cout << "Failed to create GLFW window" << std::endl;
         glfwTerminate();
         return -1;
     }
     glfwMakeContextCurrent(window);
     glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
+    glfwSetKeyCallback(window, key_callback);
 
-    // glad: load all OpenGL function pointers 
-    // --------------------------------------- 
-    if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress))
-    {
+    if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {
         std::cout << "Failed to initialize GLAD" << std::endl;
         return -1;
     }
 
+    glEnable(GL_DEPTH_TEST);
 
-    // build and compile our shader program 
-    // ------------------------------------ 
-    // vertex shader 
-    unsigned int vertexShader = glCreateShader(GL_VERTEX_SHADER);
-    glShaderSource(vertexShader, 1, &vertexShaderSource, NULL);
-    glCompileShader(vertexShader);
-    // check for shader compile errors 
-    int success;
-    char infoLog[512];
-    glGetShaderiv(vertexShader, GL_COMPILE_STATUS, &success);
-    if (!success)
-    {
-        glGetShaderInfoLog(vertexShader, 512, NULL, infoLog);
-        std::cout << "ERROR::SHADER::VERTEX::COMPILATION_FAILED\n" << infoLog <<
-            std::endl;
-    }
-    // fragment shader 
-    unsigned int fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
-    glShaderSource(fragmentShader, 1, &fragmentShaderSource, NULL);
-    glCompileShader(fragmentShader);
-    // check for shader compile errors 
-    glGetShaderiv(fragmentShader, GL_COMPILE_STATUS, &success);
-    if (!success)
-    {
-        glGetShaderInfoLog(fragmentShader, 512, NULL, infoLog);
-        std::cout << "ERROR::SHADER::FRAGMENT::COMPILATION_FAILED\n" << infoLog <<
-            std::endl;
-    }
-    // link shaders 
-    unsigned int shaderProgram = glCreateProgram();
-    glAttachShader(shaderProgram, vertexShader);
-    glAttachShader(shaderProgram, fragmentShader);
-    glLinkProgram(shaderProgram);
-    // check for linking errors 
-    glGetProgramiv(shaderProgram, GL_LINK_STATUS, &success);
-    if (!success) {
-        glGetProgramInfoLog(shaderProgram, 512, NULL, infoLog);
-        std::cout << "ERROR::SHADER::PROGRAM::LINKING_FAILED\n" << infoLog <<
-            std::endl;
-    }
-    glDeleteShader(vertexShader);
-    glDeleteShader(fragmentShader);
+    // Build and compile shader program
+    Shader ourShader("shader.vert", "shader.frag");
 
-    // set up vertex data (and buffer(s)) and configure vertex attributes 
-    // ------------------------------------------------------------------ 
-    float vertices[] = {
-        -0.5f, -0.5f, 0.0f, // left   
-         0.5f, -0.5f, 0.0f, // right  
-         0.0f,  0.5f, 0.0f  // top    
-    };
+    // Initialize bus
+    bus.init();
 
-    unsigned int VBO, VAO;
-    glGenVertexArrays(1, &VAO);
-    glGenBuffers(1, &VBO);
-    // bind the Vertex Array Object first, then bind and set vertex buffer(s), and 
-    //then configure vertex attributes(s).
-        glBindVertexArray(VAO);
-
-    glBindBuffer(GL_ARRAY_BUFFER, VBO);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
-
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
-    glEnableVertexAttribArray(0);
-
-    // note that this is allowed, the call to glVertexAttribPointer registered VBO 
-    //as the vertex attribute's bound vertex buffer object so afterwards we can safely 
-        //unbind
-        glBindBuffer(GL_ARRAY_BUFFER, 0);
-
-    // You can unbind the VAO afterwards so other VAO calls won't accidentally 
-    //modify this VAO, but this rarely happens.Modifying other
-        // VAOs requires a call to glBindVertexArray anyways so we generally don't 
-        //unbind VAOs(nor VBOs) when it's not directly necessary. 
-        glBindVertexArray(0);
-
-
-    // uncomment this call to draw in wireframe polygons. 
-    //glPolygonMode(GL_FRONT_AND_BACK, GL_LINE); 
-
-    // render loop 
-    // ----------- 
+    // Render loop
     while (!glfwWindowShouldClose(window))
     {
-        // input 
-        // ----- 
+        float currentFrame = static_cast<float>(glfwGetTime());
+        deltaTime = currentFrame - lastFrame;
+        lastFrame = currentFrame;
+
         processInput(window);
 
-        // render 
-        // ------ 
-        glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT);
+        // Update fan rotation
+        bus.updateFan(deltaTime, fanSpinning);
 
-        // draw our first triangle 
-        glUseProgram(shaderProgram);
-        glBindVertexArray(VAO); // seeing as we only have a single VAO there's no 
-        //need to bind it every time, but we'll do so to keep things a bit more organized 
-            glDrawArrays(GL_TRIANGLES, 0, 3);
-        // glBindVertexArray(0); // no need to unbind it every time  
+        glClearColor(0.53f, 0.81f, 0.92f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        // glfw: swap buffers and poll IO events (keys pressed/released, mouse moved 
-        //etc.)
-        // ------------------------------------------------------------------------------- 
+        ourShader.use();
+
+        // Matrices
+        glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 100.0f);
+        glm::mat4 view = glm::lookAt(cameraPos, cameraPos + cameraFront, cameraUp);
+        
+        ourShader.setMat4("projection", projection);
+        ourShader.setMat4("view", view);
+        ourShader.setVec3("lightPos", glm::vec3(10.0f, 10.0f, 10.0f));
+        ourShader.setVec3("viewPos", cameraPos);
+
+        // Draw bus with identity parent transform
+        glm::mat4 busTransform = glm::mat4(1.0f);
+        bus.draw(ourShader, busTransform);
+
         glfwSwapBuffers(window);
         glfwPollEvents();
     }
 
-    // optional: de-allocate all resources once they've outlived their purpose: 
-    // ------------------------------------------------------------------------ 
-    glDeleteVertexArrays(1, &VAO);
-    glDeleteBuffers(1, &VBO);
-    glDeleteProgram(shaderProgram);
-    // glfw: terminate, clearing all previously allocated GLFW resources. 
-    // ------------------------------------------------------------------ 
+    // Cleanup
+    bus.cleanup();
     glfwTerminate();
     return 0;
 }
-// process all input: query GLFW whether relevant keys are pressed/released this 
-//frame and react accordingly
-// --------------------------------------------------------------------------------------------------------- 
+
 void processInput(GLFWwindow* window)
 {
     if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
         glfwSetWindowShouldClose(window, true);
+
+    float cameraSpeed = 5.0f * deltaTime;
+    if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
+        cameraPos += cameraSpeed * cameraFront;
+    if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
+        cameraPos -= cameraSpeed * cameraFront;
+    if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
+        cameraPos -= glm::normalize(glm::cross(cameraFront, cameraUp)) * cameraSpeed;
+    if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
+        cameraPos += glm::normalize(glm::cross(cameraFront, cameraUp)) * cameraSpeed;
+    if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS)
+        cameraPos += cameraSpeed * cameraUp;
+    if (glfwGetKey(window, GLFW_KEY_R) == GLFW_PRESS)
+        cameraPos -= cameraSpeed * cameraUp;
 }
-// glfw: whenever the window size changed (by OS or user resize) this callback 
-//function executes
-// --------------------------------------------------------------------------------------------- 
+
+void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods)
+{
+    if (action == GLFW_PRESS) {
+        switch (key) {
+            case GLFW_KEY_1:
+                bus.toggleFrontDoor();
+                break;
+            case GLFW_KEY_2:
+                bus.toggleMiddleDoor();
+                break;
+            case GLFW_KEY_G:
+                fanSpinning = !fanSpinning;
+                break;
+            case GLFW_KEY_L:
+                bus.toggleLight();
+                break;
+            // Window toggles (3-8 for left windows, 9-0 and - = for right)
+            case GLFW_KEY_3:
+                bus.toggleWindow(0);
+                break;
+            case GLFW_KEY_4:
+                bus.toggleWindow(1);
+                break;
+            case GLFW_KEY_5:
+                bus.toggleWindow(2);
+                break;
+            case GLFW_KEY_6:
+                bus.toggleWindow(3);
+                break;
+            case GLFW_KEY_7:
+                bus.toggleWindow(4);
+                break;
+            case GLFW_KEY_8:
+                bus.toggleWindow(5);
+                break;
+        }
+    }
+}
+
 void framebuffer_size_callback(GLFWwindow* window, int width, int height)
 {
-    // make sure the viewport matches the new window dimensions; note that width and  
-    // height will be significantly larger than specified on retina displays. 
     glViewport(0, 0, width, height);
 }
