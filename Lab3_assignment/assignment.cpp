@@ -55,6 +55,11 @@ const float MAX_SPEED = 20.0f;
 const float STEER_SPEED = 60.0f;
 const float MAX_STEER = 35.0f;
 
+// Hover vehicle parameters
+const float HOVER_HEIGHT = 1.5f;       // Base hover height above ground
+const float HOVER_BOB_AMP = 0.15f;     // Amplitude of hover bobbing
+const float HOVER_BOB_FREQ = 2.5f;     // Frequency of bobbing
+
 // Function declarations
 void framebuffer_size_callback(GLFWwindow* window, int width, int height);
 void processInput(GLFWwindow* window);
@@ -112,7 +117,7 @@ int main()
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
-    GLFWwindow* window = glfwCreateWindow(SCR_WIDTH, SCR_HEIGHT, "Bus Simulation - Flying Simulator", NULL, NULL);
+    GLFWwindow* window = glfwCreateWindow(SCR_WIDTH, SCR_HEIGHT, "Hover Bus - Jet Engine Simulation", NULL, NULL);
     if (window == NULL) {
         std::cout << "Failed to create GLFW window" << std::endl;
         glfwTerminate();
@@ -134,6 +139,11 @@ int main()
 
     // Initialize bus
     bus.init();
+
+    // Set default shader uniform values for emissive/alpha
+    ourShader.use();
+    ourShader.setBool("isEmissive", false);
+    ourShader.setFloat("alpha", 1.0f);
 
     std::cout << "========================================" << std::endl;
     std::cout << "       BUS SIMULATION CONTROLS          " << std::endl;
@@ -162,7 +172,7 @@ int main()
     std::cout << "  3-8 = Toggle Windows" << std::endl;
     std::cout << "--- Driving Mode ---" << std::endl;
     std::cout << "  K = Toggle Driving Mode ON/OFF" << std::endl;
-    std::cout << "  W/S = Gas/Brake" << std::endl;
+    std::cout << "  W/S = Thrust/Brake (Jet flame on when thrusting!)" << std::endl;
     std::cout << "  A/D = Steer" << std::endl;
     std::cout << "========================================" << std::endl;
 
@@ -177,8 +187,9 @@ int main()
 
         // Update fan rotation
         bus.updateFan(deltaTime, fanSpinning);
-        
-        // Note: Wheel rotation is now updated inside processInput when driving
+
+        // Update jet flame animation and hover bob
+        bus.updateJetFlame(deltaTime);
 
         glClearColor(0.53f, 0.81f, 0.92f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -194,9 +205,12 @@ int main()
         ourShader.setVec3("lightPos", glm::vec3(busPosition.x + 10.0f, busPosition.y + 15.0f, busPosition.z + 10.0f)); // Follow light
         ourShader.setVec3("viewPos", cameraPos);
 
-        // Draw bus with Physics Transform
+        // Draw bus with Physics Transform + Hover Height
         glm::mat4 busTransform = glm::mat4(1.0f);
-        busTransform = glm::translate(busTransform, busPosition);
+        // Apply hover height + bobbing to position
+        glm::vec3 renderPos = busPosition;
+        renderPos.y += HOVER_HEIGHT + bus.hoverBobOffset;
+        busTransform = glm::translate(busTransform, renderPos);
         busTransform = glm::rotate(busTransform, glm::radians(busYaw), glm::vec3(0.0f, 1.0f, 0.0f));
         // Note: bus model faces -X, physics calculations assume -X is forward, so no extra rotation needed
         
@@ -278,13 +292,15 @@ void processInput(GLFWwindow* window)
         // Update position
         busPosition += forwardDir * busSpeed * dt;
 
-        // Add a slight wobble/zigzag to wheels when moving to show motion
+        // Add a slight wobble/zigzag when moving to show motion
         float wobble = 0.0f;
         if (std::abs(busSpeed) > 0.5f) {
             wobble = sin((float)glfwGetTime() * 15.0f) * 2.0f * (std::abs(busSpeed) / MAX_SPEED);
         }
         bus.steeringAngle = busSteerAngle + wobble;
-        bus.updateWheels(busSpeed * dt);
+
+        // Activate jet engine when moving forward
+        bus.jetEngineOn = (busSpeed > 0.1f);
 
         // Chase Camera Logic - Position camera behind and above the bus
         float camDist = 25.0f;
@@ -292,10 +308,10 @@ void processInput(GLFWwindow* window)
         glm::vec3 behindDir = -forwardDir;
         
         cameraPos = busPosition + behindDir * camDist;
-        cameraPos.y = busPosition.y + camHeight;
+        cameraPos.y = busPosition.y + HOVER_HEIGHT + camHeight;
         
-        // Look at bus (slightly above ground level for better view)
-        cameraLookAt = busPosition + glm::vec3(0.0f, 1.5f, 0.0f);
+        // Look at bus (slightly above hover height for better view)
+        cameraLookAt = busPosition + glm::vec3(0.0f, HOVER_HEIGHT + 1.5f, 0.0f);
         
         return; // Skip other camera controls
     }
