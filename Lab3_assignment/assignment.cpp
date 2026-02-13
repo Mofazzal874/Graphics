@@ -4,6 +4,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <iostream>
+#include <cmath>
 #include "Shader.h"
 #include "Bus.h"
 
@@ -16,6 +17,7 @@ const unsigned int SCR_HEIGHT = 800;
 // ============================================================================
 // Camera position in world space
 glm::vec3 cameraPos = glm::vec3(0.0f, 5.0f, 20.0f);
+glm::vec3 cameraLookAt = glm::vec3(0.0f, 1.0f, 0.0f);  // Camera look-at target
 
 // Camera orientation angles (in degrees)
 float cameraPitch = -15.0f;   // Pitch: rotation around X-axis (look up/down)
@@ -35,6 +37,23 @@ float lastFrame = 0.0f;
 // Global objects
 Bus bus;
 bool fanSpinning = false;
+float busMovement = 0.0f;  // Track movement for wheel rotation this frame
+
+// ============================================================================
+// DRIVING SIMULATION STATE
+// ============================================================================
+bool isDrivingMode = false;
+glm::vec3 busPosition = glm::vec3(0.0f, 0.0f, 0.0f);
+float busYaw = 0.0f;        // Bus orientation (degrees)
+float busSpeed = 0.0f;      // Current speed
+float busSteerAngle = 0.0f; // Current steering angle
+
+// Physics parameters
+const float ACCELERATION = 15.0f;
+const float DECELERATION = 10.0f;
+const float MAX_SPEED = 20.0f;
+const float STEER_SPEED = 60.0f;
+const float MAX_STEER = 35.0f;
 
 // Function declarations
 void framebuffer_size_callback(GLFWwindow* window, int width, int height);
@@ -66,6 +85,12 @@ glm::vec3 getCameraUp() {
 
 // Calculate view matrix with roll applied
 glm::mat4 getViewMatrix() {
+    // In driving mode, use lookAt directly to follow the bus
+    if (isDrivingMode) {
+        glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
+        return glm::lookAt(cameraPos, cameraLookAt, up);
+    }
+    
     glm::vec3 front = getCameraFront();
     glm::vec3 right = getCameraRight();
     glm::vec3 up = getCameraUp();
@@ -124,15 +149,21 @@ int main()
     std::cout << "  Z = Roll (tilt head)" << std::endl;
     std::cout << "  (Hold Shift for opposite direction)" << std::endl;
     std::cout << "" << std::endl;
-    std::cout << "--- Orbit Mode ---" << std::endl;
-    std::cout << "  F = Rotate around bus (hold)" << std::endl;
-    std::cout << "  Shift+F = Opposite direction" << std::endl;
+    std::cout << "--- Camera Positions ---" << std::endl;
+    std::cout << "  2 = Enter Bus Interior" << std::endl;
+    std::cout << "  9 = Driver Seat View" << std::endl;
+    std::cout << "  0 = Exit Bus (Outside View)" << std::endl;
+    std::cout << "  F = Orbit around bus (hold)" << std::endl;
     std::cout << "" << std::endl;
     std::cout << "--- Bus Controls ---" << std::endl;
     std::cout << "  1 = Toggle Door" << std::endl;
     std::cout << "  G = Toggle Fan" << std::endl;
     std::cout << "  L = Toggle Lights" << std::endl;
     std::cout << "  3-8 = Toggle Windows" << std::endl;
+    std::cout << "--- Driving Mode ---" << std::endl;
+    std::cout << "  K = Toggle Driving Mode ON/OFF" << std::endl;
+    std::cout << "  W/S = Gas/Brake" << std::endl;
+    std::cout << "  A/D = Steer" << std::endl;
     std::cout << "========================================" << std::endl;
 
     // Render loop
@@ -146,6 +177,8 @@ int main()
 
         // Update fan rotation
         bus.updateFan(deltaTime, fanSpinning);
+        
+        // Note: Wheel rotation is now updated inside processInput when driving
 
         glClearColor(0.53f, 0.81f, 0.92f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -158,11 +191,15 @@ int main()
         
         ourShader.setMat4("projection", projection);
         ourShader.setMat4("view", view);
-        ourShader.setVec3("lightPos", glm::vec3(10.0f, 15.0f, 10.0f));
+        ourShader.setVec3("lightPos", glm::vec3(busPosition.x + 10.0f, busPosition.y + 15.0f, busPosition.z + 10.0f)); // Follow light
         ourShader.setVec3("viewPos", cameraPos);
 
-        // Draw bus with identity parent transform
+        // Draw bus with Physics Transform
         glm::mat4 busTransform = glm::mat4(1.0f);
+        busTransform = glm::translate(busTransform, busPosition);
+        busTransform = glm::rotate(busTransform, glm::radians(busYaw), glm::vec3(0.0f, 1.0f, 0.0f));
+        // Note: bus model faces -X, physics calculations assume -X is forward, so no extra rotation needed
+        
         bus.draw(ourShader, busTransform);
 
         glfwSwapBuffers(window);
@@ -180,22 +217,103 @@ void processInput(GLFWwindow* window)
     if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
         glfwSetWindowShouldClose(window, true);
 
-    float rotSpeed = 50.0f * deltaTime;  // Rotation speed
-    float moveSpeed = 8.0f * deltaTime;  // Movement speed
+    float dt = deltaTime;
 
     // ========================================
-    // ROTATION CONTROLS (Pitch/Yaw/Roll)
+    // DRIVE MODE LOGIC
     // ========================================
-    
+    if (isDrivingMode) {
+        // Steering (A/D) - only works effectively when moving, but wheels turn anyway
+        if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
+            busSteerAngle += STEER_SPEED * dt;
+        if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
+            busSteerAngle -= STEER_SPEED * dt;
+        
+        // Auto-center steering if no key pressed
+        if (glfwGetKey(window, GLFW_KEY_A) != GLFW_PRESS && glfwGetKey(window, GLFW_KEY_D) != GLFW_PRESS) {
+            if (busSteerAngle > 0.0f) {
+                busSteerAngle -= STEER_SPEED * dt;
+                if (busSteerAngle < 0.0f) busSteerAngle = 0.0f;
+            } else if (busSteerAngle < 0.0f) {
+                busSteerAngle += STEER_SPEED * dt;
+                if (busSteerAngle > 0.0f) busSteerAngle = 0.0f;
+            }
+        }
+        
+        // Clamp steering
+        if (busSteerAngle > MAX_STEER) busSteerAngle = MAX_STEER;
+        if (busSteerAngle < -MAX_STEER) busSteerAngle = -MAX_STEER;
+
+        // Acceleration/Braking (W/S)
+        if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
+            busSpeed += ACCELERATION * dt;
+        else if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
+            busSpeed -= ACCELERATION * dt;
+        else {
+            // Natural friction/drag
+            if (busSpeed > 0.0f) {
+                busSpeed -= DECELERATION * dt;
+                if (busSpeed < 0.0f) busSpeed = 0.0f;
+            } else if (busSpeed < 0.0f) {
+                busSpeed += DECELERATION * dt;
+                if (busSpeed > 0.0f) busSpeed = 0.0f;
+            }
+        }
+
+        // Clamp speed
+        if (busSpeed > MAX_SPEED) busSpeed = MAX_SPEED;
+        if (busSpeed < -MAX_SPEED / 2.0f) busSpeed = -MAX_SPEED / 2.0f; // Slower reverse
+
+        // Apply physics - Update bus yaw based on speed and steering
+        // Only turn if moving
+        if (std::abs(busSpeed) > 0.1f) {
+            float turnFactor = busSpeed * dt * 0.05f;
+            busYaw += busSteerAngle * turnFactor;
+        }
+
+        // Calculate forward direction (bus model faces -X direction)
+        float rad = glm::radians(busYaw);
+        glm::vec3 forwardDir = glm::vec3(-cos(rad), 0.0f, -sin(rad));
+
+        // Update position
+        busPosition += forwardDir * busSpeed * dt;
+
+        // Add a slight wobble/zigzag to wheels when moving to show motion
+        float wobble = 0.0f;
+        if (std::abs(busSpeed) > 0.5f) {
+            wobble = sin((float)glfwGetTime() * 15.0f) * 2.0f * (std::abs(busSpeed) / MAX_SPEED);
+        }
+        bus.steeringAngle = busSteerAngle + wobble;
+        bus.updateWheels(busSpeed * dt);
+
+        // Chase Camera Logic - Position camera behind and above the bus
+        float camDist = 25.0f;
+        float camHeight = 8.0f;
+        glm::vec3 behindDir = -forwardDir;
+        
+        cameraPos = busPosition + behindDir * camDist;
+        cameraPos.y = busPosition.y + camHeight;
+        
+        // Look at bus (slightly above ground level for better view)
+        cameraLookAt = busPosition + glm::vec3(0.0f, 1.5f, 0.0f);
+        
+        return; // Skip other camera controls
+    }
+
+    // ========================================
+    // FREE CAMERA CONTROLS (Standard)
+    // ========================================
+    float rotSpeed = 50.0f * dt;
+    float moveSpeed = 15.0f * dt;
+
     // Pitch rotation (X key) - look up/down
     if (glfwGetKey(window, GLFW_KEY_X) == GLFW_PRESS) {
         if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS || 
             glfwGetKey(window, GLFW_KEY_RIGHT_SHIFT) == GLFW_PRESS)
-            cameraPitch -= rotSpeed;  // Look down
+            cameraPitch -= rotSpeed;
         else
-            cameraPitch += rotSpeed;  // Look up
+            cameraPitch += rotSpeed;
         
-        // Clamp pitch to prevent flipping
         if (cameraPitch > 89.0f) cameraPitch = 89.0f;
         if (cameraPitch < -89.0f) cameraPitch = -89.0f;
     }
@@ -204,18 +322,18 @@ void processInput(GLFWwindow* window)
     if (glfwGetKey(window, GLFW_KEY_Y) == GLFW_PRESS) {
         if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS || 
             glfwGetKey(window, GLFW_KEY_RIGHT_SHIFT) == GLFW_PRESS)
-            cameraYaw -= rotSpeed;  // Look left
+            cameraYaw -= rotSpeed;
         else
-            cameraYaw += rotSpeed;  // Look right
+            cameraYaw += rotSpeed;
     }
 
     // Roll rotation (Z key) - tilt head
     if (glfwGetKey(window, GLFW_KEY_Z) == GLFW_PRESS) {
         if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS || 
             glfwGetKey(window, GLFW_KEY_RIGHT_SHIFT) == GLFW_PRESS)
-            cameraRoll -= rotSpeed;  // Tilt left
+            cameraRoll -= rotSpeed;
         else
-            cameraRoll += rotSpeed;  // Tilt right
+            cameraRoll += rotSpeed;
     }
 
     // ========================================
@@ -223,29 +341,18 @@ void processInput(GLFWwindow* window)
     // ========================================
     glm::vec3 front = getCameraFront();
     glm::vec3 right = getCameraRight();
-    glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);  // World up for E/R
+    glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
 
-    // W = Move forward (in direction camera is facing)
     if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
         cameraPos += front * moveSpeed;
-    
-    // S = Move backward
     if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
         cameraPos -= front * moveSpeed;
-    
-    // A = Strafe left
     if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
         cameraPos -= right * moveSpeed;
-    
-    // D = Strafe right
     if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
         cameraPos += right * moveSpeed;
-    
-    // E = Move up (world up)
     if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS)
         cameraPos += up * moveSpeed;
-    
-    // R = Move down (world down)
     if (glfwGetKey(window, GLFW_KEY_R) == GLFW_PRESS)
         cameraPos -= up * moveSpeed;
 
@@ -253,29 +360,28 @@ void processInput(GLFWwindow* window)
     // ORBIT MODE (F key - rotate around bus)
     // ========================================
     if (glfwGetKey(window, GLFW_KEY_F) == GLFW_PRESS) {
-        float orbitSpeed = 60.0f * deltaTime;
+        float orbitSpeed = 60.0f * dt;
         
         if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS || 
             glfwGetKey(window, GLFW_KEY_RIGHT_SHIFT) == GLFW_PRESS)
-            orbitAngle -= orbitSpeed;  // Counter-clockwise
+            orbitAngle -= orbitSpeed;
         else
-            orbitAngle += orbitSpeed;  // Clockwise
+            orbitAngle += orbitSpeed;
         
-        // Keep angle in range
         if (orbitAngle > 360.0f) orbitAngle -= 360.0f;
         if (orbitAngle < 0.0f) orbitAngle += 360.0f;
         
-        // Calculate new position on orbit circle using FIXED radius
-        // Use orbitRadius (constant 20.0f) instead of dynamic distance
-        cameraPos.x = orbitCenter.x + orbitRadius * sin(glm::radians(orbitAngle));
-        cameraPos.z = orbitCenter.z + orbitRadius * cos(glm::radians(orbitAngle));
-        cameraPos.y = orbitHeight;  // Maintain fixed height
+        glm::vec3 currentBusPos = busPosition;
+        cameraPos.x = currentBusPos.x + orbitRadius * sin(glm::radians(orbitAngle));
+        cameraPos.z = currentBusPos.z + orbitRadius * cos(glm::radians(orbitAngle));
+        cameraPos.y = currentBusPos.y + orbitHeight;
         
-        // Update yaw to face the center
-        cameraYaw = -orbitAngle - 90.0f;
-        
-        // Reset pitch to look slightly down at bus
+        glm::vec3 direction = glm::normalize(currentBusPos - cameraPos);
+        cameraYaw = glm::degrees(atan2(direction.z, direction.x));
         cameraPitch = -20.0f;
+        cameraLookAt = currentBusPos;
+    } else if (!isDrivingMode) {
+        cameraLookAt = cameraPos + getCameraFront(); 
     }
 }
 
@@ -286,13 +392,47 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
             case GLFW_KEY_1:
                 bus.toggleFrontDoor();
                 break;
+            case GLFW_KEY_2:
+                cameraPos = glm::vec3(-3.0f, 0.5f, 0.0f);
+                cameraPitch = 0.0f;
+                cameraYaw = 90.0f;
+                cameraRoll = 0.0f;
+                std::cout << "Entered bus interior. Use WASD to move, XYZ to look around." << std::endl;
+                break;
+            case GLFW_KEY_0:
+                cameraPos = glm::vec3(0.0f, 5.0f, 20.0f);
+                cameraPitch = -15.0f;
+                cameraYaw = -90.0f;
+                cameraRoll = 0.0f;
+                orbitAngle = 0.0f;
+                std::cout << "Exited bus. Outside view restored." << std::endl;
+                break;
+            case GLFW_KEY_K:
+                isDrivingMode = !isDrivingMode;
+                if (isDrivingMode) {
+                    std::cout << "DRIVING MODE: ON. Use W/S to drive, A/D to steer." << std::endl;
+                    cameraPitch = -15.0f;
+                    cameraRoll = 0.0f;
+                } else {
+                    std::cout << "DRIVING MODE: OFF. Free camera enabled." << std::endl;
+                    busSpeed = 0.0f;
+                    busSteerAngle = 0.0f;
+                    bus.steeringAngle = 0.0f;
+                }
+                break;
+            case GLFW_KEY_9:
+                cameraPos = glm::vec3(-3.5f, 0.5f, -0.6f);
+                cameraPitch = -5.0f;
+                cameraYaw = -90.0f;
+                cameraRoll = 0.0f;
+                std::cout << "Driver seat view." << std::endl;
+                break;
             case GLFW_KEY_G:
                 fanSpinning = !fanSpinning;
                 break;
             case GLFW_KEY_L:
                 bus.toggleLight();
                 break;
-            // Window toggles
             case GLFW_KEY_3:
                 bus.toggleWindow(0);
                 break;

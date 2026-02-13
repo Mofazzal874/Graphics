@@ -18,6 +18,8 @@ public:
     float middleDoorAngle = 0.0f;
     float windowOpenAmount[12] = {0};  // 6 left + 6 right windows
     float fanRotation = 0.0f;
+    float wheelRotation = 0.0f;    // Wheel rotation angle (degrees)
+    float steeringAngle = 0.0f;    // Front wheel steering angle (-45 to 45)
     bool lightOn = true;
 
     // Colors
@@ -59,30 +61,51 @@ public:
         model = glm::scale(model, glm::vec3(10.2f, 0.3f, 3.1f));
         cube.draw(shader, model, roofColor);
 
-        // ==================== WHEELS (Cylinders) ====================
-        // Front Left (moved forward, away from door)
-        model = parent * glm::translate(glm::mat4(1.0f), glm::vec3(-3.5f, -1.0f, -1.7f));
-        model = glm::rotate(model, glm::radians(90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
-        model = glm::scale(model, glm::vec3(1.2f, 0.4f, 1.2f));
-        cylinder.draw(shader, model, wheelColor);
+        // ==================== WHEELS (Cylinders with rotation) ====================
+        glm::vec3 tireColor = glm::vec3(0.1f, 0.1f, 0.1f);       // Black tire
+        glm::vec3 rimColor = glm::vec3(0.6f, 0.6f, 0.65f);       // Silver rim
+        glm::vec3 hubColor = glm::vec3(0.4f, 0.4f, 0.45f);       // Dark silver hub
 
-        // Front Right
-        model = parent * glm::translate(glm::mat4(1.0f), glm::vec3(-3.5f, -1.0f, 1.7f));
-        model = glm::rotate(model, glm::radians(90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
-        model = glm::scale(model, glm::vec3(1.2f, 0.4f, 1.2f));
-        cylinder.draw(shader, model, wheelColor);
+        // Helper lambda to draw a complete wheel with rotation and steering
+        auto drawWheel = [&](float x, float z, bool isFront) {
+            // Apply steering only to front wheels
+            float steer = isFront ? steeringAngle : 0.0f;
+            
+            // Base wheel transform with steering rotation
+            glm::mat4 wheelBase = parent * glm::translate(glm::mat4(1.0f), glm::vec3(x, -1.0f, z));
+            wheelBase = glm::rotate(wheelBase, glm::radians(steer), glm::vec3(0.0f, 1.0f, 0.0f));
 
-        // Rear Left
-        model = parent * glm::translate(glm::mat4(1.0f), glm::vec3(3.5f, -1.0f, -1.7f));
-        model = glm::rotate(model, glm::radians(90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
-        model = glm::scale(model, glm::vec3(1.2f, 0.4f, 1.2f));
-        cylinder.draw(shader, model, wheelColor);
+            // Tire (outer black cylinder)
+            model = wheelBase;
+            model = glm::rotate(model, glm::radians(90.0f), glm::vec3(1.0f, 0.0f, 0.0f));  // Lay flat
+            model = glm::rotate(model, glm::radians(wheelRotation), glm::vec3(0.0f, 1.0f, 0.0f));  // Spin
+            model = glm::scale(model, glm::vec3(1.2f, 0.35f, 1.2f));
+            cylinder.draw(shader, model, tireColor);
 
-        // Rear Right
-        model = parent * glm::translate(glm::mat4(1.0f), glm::vec3(3.5f, -1.0f, 1.7f));
-        model = glm::rotate(model, glm::radians(90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
-        model = glm::scale(model, glm::vec3(1.2f, 0.4f, 1.2f));
-        cylinder.draw(shader, model, wheelColor);
+            // Rim (inner silver cylinder) - both sides
+            for (float side : {-0.18f, 0.18f}) {
+                model = wheelBase * glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, side));
+                model = glm::rotate(model, glm::radians(90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
+                model = glm::rotate(model, glm::radians(wheelRotation), glm::vec3(0.0f, 1.0f, 0.0f));
+                model = glm::scale(model, glm::vec3(0.9f, 0.05f, 0.9f));
+                cylinder.draw(shader, model, rimColor);
+            }
+
+            // Hub cap (center) - both sides
+            for (float side : {-0.19f, 0.19f}) {
+                model = wheelBase * glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, side));
+                model = glm::rotate(model, glm::radians(90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
+                model = glm::rotate(model, glm::radians(wheelRotation), glm::vec3(0.0f, 1.0f, 0.0f));
+                model = glm::scale(model, glm::vec3(0.3f, 0.06f, 0.3f));
+                cylinder.draw(shader, model, hubColor);
+            }
+        };
+
+        // Draw all 4 wheels
+        drawWheel(-3.5f, -1.7f, true);   // Front Left (Steering)
+        drawWheel(-3.5f, 1.7f, true);    // Front Right (Steering)
+        drawWheel(3.5f, -1.7f, false);   // Rear Left
+        drawWheel(3.5f, 1.7f, false);    // Rear Right
 
         // ==================== WINDOWS ====================
         // Left side windows (5 windows - properly spaced within body)
@@ -142,91 +165,200 @@ public:
     void drawInterior(const Shader& shader, glm::mat4 parent) {
         glm::mat4 model;
 
+        // Colors for interior elements
+        glm::vec3 fabricColor = glm::vec3(0.15f, 0.25f, 0.45f);      // Dark blue fabric
+        glm::vec3 cushionColor = glm::vec3(0.2f, 0.35f, 0.55f);      // Lighter blue cushion
+        glm::vec3 armrestColor = glm::vec3(0.25f, 0.25f, 0.25f);     // Dark gray armrest
+        glm::vec3 metalColor = glm::vec3(0.7f, 0.7f, 0.75f);         // Chrome/metal
+        glm::vec3 carpetColor = glm::vec3(0.3f, 0.25f, 0.2f);        // Brown carpet aisle
+        glm::vec3 rackColor = glm::vec3(0.5f, 0.5f, 0.52f);          // Luggage rack
+
         // ==================== FLOOR ====================
+        // Main floor
         model = parent * glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -0.9f, 0.0f));
         model = glm::scale(model, glm::vec3(9.5f, 0.1f, 2.6f));
         cube.draw(shader, model, floorColor);
 
-        // ==================== SEATS (2 rows on each side) ====================
-        float seatY = -0.3f;
-        
-        // Left row of seats (6 seats)
-        for (int i = 0; i < 6; i++) {
-            // Seat base
-            model = parent * glm::translate(glm::mat4(1.0f), glm::vec3(-2.5f + i * 1.3f, seatY, -0.9f));
-            model = glm::scale(model, glm::vec3(0.9f, 0.4f, 0.8f));
-            cube.draw(shader, model, seatColor);
-            // Seat back
-            model = parent * glm::translate(glm::mat4(1.0f), glm::vec3(-2.5f + i * 1.3f, seatY + 0.5f, -1.15f));
-            model = glm::scale(model, glm::vec3(0.9f, 0.6f, 0.15f));
-            cube.draw(shader, model, seatColor);
+        // Aisle carpet (center strip)
+        model = parent * glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -0.84f, 0.0f));
+        model = glm::scale(model, glm::vec3(9.0f, 0.02f, 0.6f));
+        cube.draw(shader, model, carpetColor);
+
+        // ==================== PASSENGER SEATS (Coach Style) ====================
+        float seatY = -0.5f;
+        float seatSpacing = 1.1f;
+        int numSeats = 8;
+
+        // Draw seats on both sides
+        for (int side = 0; side < 2; side++) {
+            float zPos = (side == 0) ? -0.85f : 0.85f;      // Left or right side
+            float zBack = (side == 0) ? -1.1f : 1.1f;       // Backrest position
+            float zArm = (side == 0) ? -0.55f : 0.55f;      // Inner armrest (aisle side)
+            
+            for (int i = 0; i < numSeats; i++) {
+                float xPos = -3.2f + i * seatSpacing;
+
+                // Seat cushion (main sitting surface)
+                model = parent * glm::translate(glm::mat4(1.0f), glm::vec3(xPos, seatY, zPos));
+                model = glm::scale(model, glm::vec3(0.8f, 0.25f, 0.7f));
+                cube.draw(shader, model, cushionColor);
+
+                // Seat frame/base
+                model = parent * glm::translate(glm::mat4(1.0f), glm::vec3(xPos, seatY - 0.2f, zPos));
+                model = glm::scale(model, glm::vec3(0.75f, 0.15f, 0.65f));
+                cube.draw(shader, model, armrestColor);
+
+                // Seat back (backrest)
+                model = parent * glm::translate(glm::mat4(1.0f), glm::vec3(xPos, seatY + 0.55f, zBack));
+                model = glm::scale(model, glm::vec3(0.75f, 0.85f, 0.12f));
+                cube.draw(shader, model, fabricColor);
+
+                // Backrest cushion (softer part)
+                float cushionZ = (side == 0) ? zBack + 0.08f : zBack - 0.08f;
+                model = parent * glm::translate(glm::mat4(1.0f), glm::vec3(xPos, seatY + 0.5f, cushionZ));
+                model = glm::scale(model, glm::vec3(0.65f, 0.7f, 0.08f));
+                cube.draw(shader, model, cushionColor);
+
+                // Headrest
+                model = parent * glm::translate(glm::mat4(1.0f), glm::vec3(xPos, seatY + 1.1f, zBack));
+                model = glm::scale(model, glm::vec3(0.4f, 0.25f, 0.15f));
+                cube.draw(shader, model, fabricColor);
+
+                // Inner armrest (toward aisle)
+                model = parent * glm::translate(glm::mat4(1.0f), glm::vec3(xPos, seatY + 0.15f, zArm));
+                model = glm::scale(model, glm::vec3(0.7f, 0.08f, 0.1f));
+                cube.draw(shader, model, armrestColor);
+
+                // Seat leg (metal support)
+                model = parent * glm::translate(glm::mat4(1.0f), glm::vec3(xPos, seatY - 0.45f, zPos));
+                model = glm::scale(model, glm::vec3(0.08f, 0.35f, 0.08f));
+                cylinder.draw(shader, model, metalColor);
+            }
         }
 
-        // Right row of seats (6 seats)
-        for (int i = 0; i < 6; i++) {
-            // Seat base
-            model = parent * glm::translate(glm::mat4(1.0f), glm::vec3(-2.5f + i * 1.3f, seatY, 0.9f));
-            model = glm::scale(model, glm::vec3(0.9f, 0.4f, 0.8f));
-            cube.draw(shader, model, seatColor);
-            // Seat back
-            model = parent * glm::translate(glm::mat4(1.0f), glm::vec3(-2.5f + i * 1.3f, seatY + 0.5f, 1.15f));
-            model = glm::scale(model, glm::vec3(0.9f, 0.6f, 0.15f));
-            cube.draw(shader, model, seatColor);
+        // ==================== HANDRAILS ====================
+        // Overhead handrails (both sides of aisle)
+        for (int side = 0; side < 2; side++) {
+            float zRail = (side == 0) ? -0.3f : 0.3f;
+            
+            // Main horizontal rail
+            model = parent * glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 1.7f, zRail));
+            model = glm::rotate(model, glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+            model = glm::scale(model, glm::vec3(0.05f, 8.0f, 0.05f));
+            cylinder.draw(shader, model, metalColor);
+
+            // Vertical support poles
+            for (int i = 0; i < 5; i++) {
+                model = parent * glm::translate(glm::mat4(1.0f), glm::vec3(-3.5f + i * 2.0f, 1.3f, zRail));
+                model = glm::scale(model, glm::vec3(0.04f, 0.8f, 0.04f));
+                cylinder.draw(shader, model, metalColor);
+            }
+        }
+
+        // ==================== LUGGAGE RACKS ====================
+        // Overhead luggage compartments (both sides)
+        for (int side = 0; side < 2; side++) {
+            float zRack = (side == 0) ? -1.2f : 1.2f;
+            
+            // Rack bottom
+            model = parent * glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 1.5f, zRack));
+            model = glm::scale(model, glm::vec3(8.5f, 0.05f, 0.4f));
+            cube.draw(shader, model, rackColor);
+
+            // Rack back
+            float backZ = (side == 0) ? zRack - 0.15f : zRack + 0.15f;
+            model = parent * glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 1.65f, backZ));
+            model = glm::scale(model, glm::vec3(8.5f, 0.35f, 0.05f));
+            cube.draw(shader, model, rackColor);
         }
 
         // ==================== DRIVER AREA ====================
-        // Dashboard
-        model = parent * glm::translate(glm::mat4(1.0f), glm::vec3(-4.5f, 0.5f, 0.0f));
-        model = glm::scale(model, glm::vec3(0.5f, 1.0f, 2.4f));
+        // Dashboard (larger, more detailed)
+        model = parent * glm::translate(glm::mat4(1.0f), glm::vec3(-4.3f, 0.3f, 0.0f));
+        model = glm::scale(model, glm::vec3(0.8f, 1.2f, 2.4f));
         cube.draw(shader, model, dashboardColor);
 
-        // Driver seat
-        model = parent * glm::translate(glm::mat4(1.0f), glm::vec3(-3.8f, seatY, -0.5f));
-        model = glm::scale(model, glm::vec3(0.9f, 0.5f, 0.9f));
-        cube.draw(shader, model, seatColor);
+        // Instrument panel
+        model = parent * glm::translate(glm::mat4(1.0f), glm::vec3(-4.0f, 0.6f, -0.3f));
+        model = glm::scale(model, glm::vec3(0.3f, 0.4f, 0.8f));
+        cube.draw(shader, model, glm::vec3(0.1f, 0.1f, 0.1f));
+
+        // Driver seat (more comfortable style)
+        model = parent * glm::translate(glm::mat4(1.0f), glm::vec3(-3.5f, seatY, -0.6f));
+        model = glm::scale(model, glm::vec3(0.9f, 0.3f, 0.8f));
+        cube.draw(shader, model, cushionColor);
+        
         // Driver seat back
-        model = parent * glm::translate(glm::mat4(1.0f), glm::vec3(-3.8f, seatY + 0.6f, -0.9f));
-        model = glm::scale(model, glm::vec3(0.9f, 0.7f, 0.15f));
-        cube.draw(shader, model, seatColor);
+        model = parent * glm::translate(glm::mat4(1.0f), glm::vec3(-3.5f, seatY + 0.6f, -0.95f));
+        model = glm::scale(model, glm::vec3(0.85f, 0.9f, 0.15f));
+        cube.draw(shader, model, fabricColor);
+
+        // Driver seat headrest
+        model = parent * glm::translate(glm::mat4(1.0f), glm::vec3(-3.5f, seatY + 1.2f, -0.95f));
+        model = glm::scale(model, glm::vec3(0.4f, 0.3f, 0.12f));
+        cube.draw(shader, model, fabricColor);
 
         // ==================== STEERING WHEEL ====================
-        // Steering column (cylinder)
-        model = parent * glm::translate(glm::mat4(1.0f), glm::vec3(-4.2f, 0.8f, -0.5f));
-        model = glm::rotate(model, glm::radians(-30.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-        model = glm::scale(model, glm::vec3(0.08f, 0.5f, 0.08f));
+        // Steering column
+        model = parent * glm::translate(glm::mat4(1.0f), glm::vec3(-4.0f, 0.7f, -0.6f));
+        model = glm::rotate(model, glm::radians(-25.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+        model = glm::scale(model, glm::vec3(0.06f, 0.4f, 0.06f));
         cylinder.draw(shader, model, steeringColor);
 
         // Steering wheel (torus)
-        model = parent * glm::translate(glm::mat4(1.0f), glm::vec3(-4.0f, 1.05f, -0.5f));
-        model = glm::rotate(model, glm::radians(-30.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+        model = parent * glm::translate(glm::mat4(1.0f), glm::vec3(-3.85f, 0.95f, -0.6f));
+        model = glm::rotate(model, glm::radians(-25.0f), glm::vec3(0.0f, 0.0f, 1.0f));
         model = glm::rotate(model, glm::radians(90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
-        model = glm::scale(model, glm::vec3(0.8f, 0.8f, 0.8f));
+        model = glm::scale(model, glm::vec3(0.7f, 0.7f, 0.7f));
         torus.draw(shader, model, steeringColor);
 
-        // ==================== CEILING FAN ====================
-        glm::mat4 fanBase = parent * glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 1.9f, 0.0f));
-        fanBase = glm::rotate(fanBase, glm::radians(fanRotation), glm::vec3(0.0f, 1.0f, 0.0f));
+        // ==================== CEILING FANS (2 fans) ====================
+        for (int f = 0; f < 2; f++) {
+            float fanX = -1.5f + f * 3.0f;
+            glm::mat4 fanBase = parent * glm::translate(glm::mat4(1.0f), glm::vec3(fanX, 1.85f, 0.0f));
+            fanBase = glm::rotate(fanBase, glm::radians(fanRotation + f * 45.0f), glm::vec3(0.0f, 1.0f, 0.0f));
 
-        // Fan hub
-        model = glm::scale(fanBase, glm::vec3(0.2f, 0.15f, 0.2f));
-        cylinder.draw(shader, model, glm::vec3(0.3f, 0.3f, 0.3f));
+            // Fan hub
+            model = glm::scale(fanBase, glm::vec3(0.15f, 0.1f, 0.15f));
+            cylinder.draw(shader, model, metalColor);
 
-        // Fan blades (4 blades)
-        for (int i = 0; i < 4; i++) {
-            glm::mat4 blade = glm::rotate(fanBase, glm::radians(90.0f * i), glm::vec3(0.0f, 1.0f, 0.0f));
-            blade = glm::translate(blade, glm::vec3(0.4f, 0.0f, 0.0f));
-            blade = glm::scale(blade, glm::vec3(0.6f, 0.05f, 0.15f));
-            cube.draw(shader, blade, fanColor);
+            // Fan blades (4 blades)
+            for (int i = 0; i < 4; i++) {
+                glm::mat4 blade = glm::rotate(fanBase, glm::radians(90.0f * i), glm::vec3(0.0f, 1.0f, 0.0f));
+                blade = glm::translate(blade, glm::vec3(0.3f, 0.0f, 0.0f));
+                blade = glm::scale(blade, glm::vec3(0.45f, 0.03f, 0.12f));
+                cube.draw(shader, blade, fanColor);
+            }
         }
 
         // ==================== INTERIOR LIGHTS ====================
         glm::vec3 currentLightColor = lightOn ? lightColor : lightOffColor;
         
-        // Ceiling lights (4 along the bus)
-        for (int i = 0; i < 4; i++) {
-            model = parent * glm::translate(glm::mat4(1.0f), glm::vec3(-2.5f + i * 2.0f, 1.95f, 0.0f));
-            model = glm::scale(model, glm::vec3(0.8f, 0.1f, 0.3f));
+        // LED strip lights along ceiling (both sides)
+        for (int side = 0; side < 2; side++) {
+            float zLight = (side == 0) ? -0.8f : 0.8f;
+            model = parent * glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 1.95f, zLight));
+            model = glm::scale(model, glm::vec3(8.0f, 0.05f, 0.15f));
             cube.draw(shader, model, currentLightColor);
+        }
+
+        // Center dome light
+        model = parent * glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 1.95f, 0.0f));
+        model = glm::scale(model, glm::vec3(0.5f, 0.08f, 0.5f));
+        cylinder.draw(shader, model, currentLightColor);
+
+        // ==================== ENTRY STEPS ====================
+        // Steps visible when door is open
+        if (frontDoorAngle > 45.0f) {
+            // Step 1 (lowest)
+            model = parent * glm::translate(glm::mat4(1.0f), glm::vec3(-4.5f, -1.2f, 1.8f));
+            model = glm::scale(model, glm::vec3(0.8f, 0.15f, 0.5f));
+            cube.draw(shader, model, metalColor);
+            
+            // Step 2
+            model = parent * glm::translate(glm::mat4(1.0f), glm::vec3(-4.5f, -0.9f, 1.6f));
+            model = glm::scale(model, glm::vec3(0.8f, 0.15f, 0.5f));
+            cube.draw(shader, model, metalColor);
         }
     }
 
@@ -254,6 +386,19 @@ public:
 
     void toggleLight() {
         lightOn = !lightOn;
+    }
+
+    // Update wheel rotation based on movement (call with positive speed for forward, negative for backward)
+    void updateWheels(float movementSpeed) {
+        // Wheel circumference affects rotation speed
+        // Assuming wheel radius ~0.6 units, circumference = 2 * PI * 0.6 = ~3.77
+        // Convert linear movement to angular rotation
+        float rotationSpeed = movementSpeed * 100.0f;  // Scale factor for visible rotation
+        wheelRotation += rotationSpeed;
+        
+        // Keep in range
+        if (wheelRotation > 360.0f) wheelRotation -= 360.0f;
+        if (wheelRotation < -360.0f) wheelRotation += 360.0f;
     }
 
     void cleanup() {

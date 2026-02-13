@@ -1,0 +1,53 @@
+﻿  main.cpp
+D:\Academics\Graphics\Lab_3\Codes\basic_camera.h(62,24): warning C4244: 'initializing': conversion from 'double' to 'float', possible loss of data
+  (compiling source file '../Lab_3/Codes/main.cpp')
+  
+D:\Academics\Graphics\Lab_3\Codes\sphere.h(177,26): warning C4244: 'initializing': conversion from 'double' to 'float', possible loss of data
+  (compiling source file '../Lab_3/Codes/main.cpp')
+  
+D:\Academics\Graphics\Lab_3\Codes\sphere.h(178,25): warning C4244: 'initializing': conversion from 'double' to 'float', possible loss of data
+  (compiling source file '../Lab_3/Codes/main.cpp')
+  
+D:\Academics\Graphics\Lab_3\Codes\sphere.h(180,26): warning C4244: 'initializing': conversion from 'double' to 'float', possible loss of data
+  (compiling source file '../Lab_3/Codes/main.cpp')
+  
+D:\Academics\Graphics\Lab_3\Codes\main.cpp(374,44): warning C4305: '-=': truncation from 'double' to 'float'
+D:\Academics\Graphics\Lab_3\Codes\main.cpp(375,49): warning C4305: '-=': truncation from 'double' to 'float'
+D:\Academics\Graphics\Lab_3\Codes\main.cpp(376,31): warning C4305: '-=': truncation from 'double' to 'float'
+D:\Academics\Graphics\Lab_3\Codes\main.cpp(378,70): warning C4305: '+=': truncation from 'double' to 'float'
+D:\Academics\Graphics\Lab_3\Codes\main.cpp(379,70): warning C4305: '-=': truncation from 'double' to 'float'
+D:\Academics\Graphics\Lab_3\Codes\main.cpp(380,70): warning C4305: '+=': truncation from 'double' to 'float'
+D:\Academics\Graphics\Lab_3\Codes\main.cpp(381,70): warning C4305: '-=': truncation from 'double' to 'float'
+D:\Academics\Graphics\Lab_3\Codes\main.cpp(382,70): warning C4305: '+=': truncation from 'double' to 'float'
+D:\Academics\Graphics\Lab_3\Codes\main.cpp(383,70): warning C4305: '-=': truncation from 'double' to 'float'
+D:\Academics\Graphics\Lab_3\Codes\main.cpp(384,66): warning C4305: '+=': truncation from 'double' to 'float'
+D:\Academics\Graphics\Lab_3\Codes\main.cpp(385,66): warning C4305: '-=': truncation from 'double' to 'float'
+D:\Academics\Graphics\Lab_3\Codes\main.cpp(386,66): warning C4305: '+=': truncation from 'double' to 'float'
+D:\Academics\Graphics\Lab_3\Codes\main.cpp(387,66): warning C4305: '-=': truncation from 'double' to 'float'
+D:\Academics\Graphics\Lab_3\Codes\main.cpp(388,66): warning C4305: '+=': truncation from 'double' to 'float'
+D:\Academics\Graphics\Lab_3\Codes\main.cpp(389,66): warning C4305: '-=': truncation from 'double' to 'float'
+D:\Academics\Graphics\Lab_3\Codes\main.cpp(393,26): warning C4305: '+=': truncation from 'double' to 'float'
+D:\Academics\Graphics\Lab_3\Codes\main.cpp(400,26): warning C4305: '+=': truncation from 'double' to 'float'
+D:\Academics\Graphics\Lab_3\Codes\main.cpp(407,26): warning C4305: '+=': truncation from 'double' to 'float'
+D:\Academics\Graphics\Lab_3\Codes\main.cpp(415,21): warning C4244: '+=': conversion from 'double' to 'float', possible loss of data
+D:\Academics\Graphics\Lab_3\Codes\main.cpp(420,21): warning C4244: '-=': conversion from 'double' to 'float', possible loss of data
+D:\Academics\Graphics\Lab_3\Codes\main.cpp(425,21): warning C4244: '+=': conversion from 'double' to 'float', possible loss of data
+D:\Academics\Graphics\Lab_3\Codes\main.cpp(430,21): warning C4244: '-=': conversion from 'double' to 'float', possible loss of data
+D:\Academics\Graphics\Lab_3\Codes\main.cpp(435,21): warning C4244: '+=': conversion from 'double' to 'float', possible loss of data
+D:\Academics\Graphics\Lab_3\Codes\main.cpp(440,21): warning C4244: '-=': conversion from 'double' to 'float', possible loss of data
+glfw3.lib(init.obj) : warning LNK4099: PDB 'glfw3.pdb' was not found with 'glfw3.lib(init.obj)' or at 'D:\Academics\Graphics\lab3_task_project\x64\Debug\glfw3.pdb'; linking object as if no debug info
+glfw3.lib(window.obj) : warning LNK4099: PDB 'glfw3.pdb' was not found with 'glfw3.lib(window.obj)' or at 'D:\Academics\Graphics\lab3_task_project\x64\Debug\glfw3.pdb'; linking object as if no debug info
+glfw3.lib(input.obj) : warning LNK4099: PDB 'glfw3.pdb' was not found with 'glfw3.lib(input.obj)' or at 'D:\Academics\Graphics\lab3_task_project\x64\Debug\glfw3.pdb'; linking object as if no debug info
+glfw3.lib(context.obj) : warning LNK4099: PDB 'glfw3.pdb' was not found with 'glfw3.lib(context.obj)' or at 'D:\Academics\Graphics\lab3_task_project\x64\Debug\glfw3.pdb'; linking object as if no debug info
+glfw3.lib(win32_init.obj) : warning LNK4099: PDB 'glfw3.pdb' was not found with 'glfw3.lib(win32_init.obj)' or at 'D:\Academics\Graphics\lab3_task_project\x64\Debug\glfw3.pdb'; linking object as if no debug info
+glfw3.lib(win32_monitor.obj) : warning LNK4099: PDB 'glfw3.pdb' was not found with 'glfw3.lib(win32_monitor.obj)' or at 'D:\Academics\Graphics\lab3_task_project\x64\Debug\glfw3.pdb'; linking object as if no debug info
+glfw3.lib(win32_time.obj) : warning LNK4099: PDB 'glfw3.pdb' was not found with 'glfw3.lib(win32_time.obj)' or at 'D:\Academics\Graphics\lab3_task_project\x64\Debug\glfw3.pdb'; linking object as if no debug info
+glfw3.lib(win32_thread.obj) : warning LNK4099: PDB 'glfw3.pdb' was not found with 'glfw3.lib(win32_thread.obj)' or at 'D:\Academics\Graphics\lab3_task_project\x64\Debug\glfw3.pdb'; linking object as if no debug info
+glfw3.lib(monitor.obj) : warning LNK4099: PDB 'glfw3.pdb' was not found with 'glfw3.lib(monitor.obj)' or at 'D:\Academics\Graphics\lab3_task_project\x64\Debug\glfw3.pdb'; linking object as if no debug info
+glfw3.lib(vulkan.obj) : warning LNK4099: PDB 'glfw3.pdb' was not found with 'glfw3.lib(vulkan.obj)' or at 'D:\Academics\Graphics\lab3_task_project\x64\Debug\glfw3.pdb'; linking object as if no debug info
+glfw3.lib(win32_window.obj) : warning LNK4099: PDB 'glfw3.pdb' was not found with 'glfw3.lib(win32_window.obj)' or at 'D:\Academics\Graphics\lab3_task_project\x64\Debug\glfw3.pdb'; linking object as if no debug info
+glfw3.lib(win32_joystick.obj) : warning LNK4099: PDB 'glfw3.pdb' was not found with 'glfw3.lib(win32_joystick.obj)' or at 'D:\Academics\Graphics\lab3_task_project\x64\Debug\glfw3.pdb'; linking object as if no debug info
+glfw3.lib(wgl_context.obj) : warning LNK4099: PDB 'glfw3.pdb' was not found with 'glfw3.lib(wgl_context.obj)' or at 'D:\Academics\Graphics\lab3_task_project\x64\Debug\glfw3.pdb'; linking object as if no debug info
+glfw3.lib(egl_context.obj) : warning LNK4099: PDB 'glfw3.pdb' was not found with 'glfw3.lib(egl_context.obj)' or at 'D:\Academics\Graphics\lab3_task_project\x64\Debug\glfw3.pdb'; linking object as if no debug info
+glfw3.lib(osmesa_context.obj) : warning LNK4099: PDB 'glfw3.pdb' was not found with 'glfw3.lib(osmesa_context.obj)' or at 'D:\Academics\Graphics\lab3_task_project\x64\Debug\glfw3.pdb'; linking object as if no debug info
+  lab3_task_project.vcxproj -> D:\Academics\Graphics\lab3_task_project\x64\Debug\lab3_task_project.exe
