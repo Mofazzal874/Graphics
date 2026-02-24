@@ -1,4 +1,4 @@
-#include <glad/glad.h>
+﻿#include <glad/glad.h>
 #include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -393,7 +393,7 @@ int main()
     glfwSetScrollCallback(window, scroll_callback);
     glfwSetKeyCallback(window, key_callback);
 
-    // Mouse starts free — press M to capture for look-around
+    // Mouse starts free â€” press M to capture for look-around
     glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
 
     if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {
@@ -589,179 +589,209 @@ int main()
         bus.draw(ourShader, busTransform);
         bus.jetEngineOn = savedJetOn;
 
-        // ==================== CITY ENVIRONMENT ====================
-        // The road runs along the X-axis. Bus starts at (0,0,0) facing -X.
-        // We generate road segments and buildings relative to the bus X position.
+        // ==================== SIMPLE CITY ENVIRONMENT ====================
+        // Fixed road + buildings along both sides, no looping
 
-        float busX = busPosition.x;
-        // Snap to nearest segment boundary
-        float segStart = floor(busX / ROAD_SEGMENT_LEN) * ROAD_SEGMENT_LEN;
+        // --- ROAD (single long strip, fragment-blended texture) ---
+        {
+            if (texRoad != 0) {
+                ourShader.setInt("textureMode", 3);   // blended Phong — avoids extreme stretch
+                glActiveTexture(GL_TEXTURE0);
+                glBindTexture(GL_TEXTURE_2D, texRoad);
+                ourShader.setInt("textureSampler", 0);
+            }
+            glm::mat4 model = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -0.05f, 0.0f));
+            model = glm::scale(model, glm::vec3(200.0f, 0.1f, ROAD_WIDTH));
+            bus.cube.draw(ourShader, model, glm::vec3(0.08f, 0.08f, 0.08f));
+            ourShader.setInt("textureMode", 0);
+        }
 
-        for (int seg = -VISIBLE_SEGMENTS / 2; seg <= VISIBLE_SEGMENTS / 2; seg++) {
-            float segX = segStart + seg * ROAD_SEGMENT_LEN;
-            int segID = (int)floor(segX / ROAD_SEGMENT_LEN);
+        // --- WHITE DASHED CENTER DIVIDER ---
+        {
+            for (int d = -40; d < 40; d++) {
+                float dx = d * 2.5f;
+                glm::mat4 model = glm::translate(glm::mat4(1.0f), glm::vec3(dx, 0.01f, 0.0f));
+                model = glm::scale(model, glm::vec3(1.5f, 0.02f, 0.15f));
+                bus.cube.draw(ourShader, model, glm::vec3(1.0f, 1.0f, 1.0f));
+            }
+        }
 
-            // --- ROAD SEGMENT ---
-            {
-                ourShader.setInt("textureMode", 0);
-                if (texRoad != 0) {
+        // --- GRASS (both sides, fragment-blended) ---
+        for (int side = -1; side <= 1; side += 2) {
+            float grassZ = side * (ROAD_WIDTH * 0.5f + GRASS_WIDTH * 0.5f);
+            if (texGrass != 0) {
+                ourShader.setInt("textureMode", 3);
+                glActiveTexture(GL_TEXTURE0);
+                glBindTexture(GL_TEXTURE_2D, texGrass);
+                ourShader.setInt("textureSampler", 0);
+            }
+            glm::mat4 model = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -0.1f, grassZ));
+            model = glm::scale(model, glm::vec3(200.0f, 0.1f, GRASS_WIDTH));
+            bus.cube.draw(ourShader, model, glm::vec3(0.15f, 0.45f, 0.1f));
+            ourShader.setInt("textureMode", 0);
+        }
+
+        // ==================== BUILDINGS ====================
+        // Each building type appears twice (one on each side or at different positions)
+
+        // Helper lambda: draws a stacked-cubes building at (posX, posZ)
+        // --- STACKED CUBES #1 (left side, near start) ---
+        {
+            float bx = -15.0f, bz = -10.0f;
+            glm::vec3 colors[] = {
+                glm::vec3(0.85f, 0.2f, 0.2f),
+                glm::vec3(0.2f, 0.65f, 0.9f),
+                glm::vec3(0.9f, 0.85f, 0.1f)
+            };
+            float yOff = 0.0f;
+            float sizes[][3] = { {3.0f, 3.0f, 3.0f}, {2.5f, 2.5f, 2.5f}, {2.0f, 2.0f, 2.0f} };
+            for (int c = 0; c < 3; c++) {
+                if (texContainer != 0) {
                     ourShader.setInt("textureMode", 1);
                     glActiveTexture(GL_TEXTURE0);
-                    glBindTexture(GL_TEXTURE_2D, texRoad);
+                    glBindTexture(GL_TEXTURE_2D, texContainer);
                     ourShader.setInt("textureSampler", 0);
                 }
-                glm::mat4 model = glm::translate(glm::mat4(1.0f), 
-                    glm::vec3(segX + ROAD_SEGMENT_LEN * 0.5f, -0.05f, 0.0f));
-                model = glm::scale(model, glm::vec3(ROAD_SEGMENT_LEN, 0.1f, ROAD_WIDTH));
-                bus.cube.draw(ourShader, model, glm::vec3(0.08f, 0.08f, 0.08f));
+                glm::mat4 model = glm::translate(glm::mat4(1.0f),
+                    glm::vec3(bx, yOff + sizes[c][1] * 0.5f, bz));
+                model = glm::scale(model, glm::vec3(sizes[c][0], sizes[c][1], sizes[c][2]));
+                bus.cube.draw(ourShader, model, colors[c]);
                 ourShader.setInt("textureMode", 0);
+                yOff += sizes[c][1];
             }
+        }
 
-            // --- WHITE DASHED CENTER DIVIDER ---
-            {
-                int numDashes = 4;
-                float dashLen = ROAD_SEGMENT_LEN / (numDashes * 2.0f);
-                for (int d = 0; d < numDashes; d++) {
-                    float dx = segX + d * (dashLen * 2.0f) + dashLen * 0.5f;
-                    glm::mat4 model = glm::translate(glm::mat4(1.0f), 
-                        glm::vec3(dx, 0.01f, 0.0f));
-                    model = glm::scale(model, glm::vec3(dashLen * 0.8f, 0.02f, 0.15f));
-                    bus.cube.draw(ourShader, model, glm::vec3(1.0f, 1.0f, 1.0f));
-                }
-            }
-
-            // --- GRASS STRIPS (both sides) ---
-            for (int side = -1; side <= 1; side += 2) {
-                float grassZ = side * (ROAD_WIDTH * 0.5f + GRASS_WIDTH * 0.5f);
-                if (texGrass != 0) {
-                    ourShader.setInt("textureMode", 3);
+        // --- STACKED CUBES #2 (right side, further along) ---
+        {
+            float bx = -50.0f, bz = 12.0f;
+            glm::vec3 colors[] = {
+                glm::vec3(0.95f, 0.55f, 0.1f),
+                glm::vec3(0.7f, 0.3f, 0.85f)
+            };
+            float yOff = 0.0f;
+            float sizes[][3] = { {3.5f, 4.0f, 3.5f}, {2.5f, 3.0f, 2.5f} };
+            for (int c = 0; c < 2; c++) {
+                if (texContainer != 0) {
+                    ourShader.setInt("textureMode", 1);
                     glActiveTexture(GL_TEXTURE0);
-                    glBindTexture(GL_TEXTURE_2D, texGrass);
+                    glBindTexture(GL_TEXTURE_2D, texContainer);
                     ourShader.setInt("textureSampler", 0);
                 }
-                glm::mat4 model = glm::translate(glm::mat4(1.0f), 
-                    glm::vec3(segX + ROAD_SEGMENT_LEN * 0.5f, -0.1f, grassZ));
-                model = glm::scale(model, glm::vec3(ROAD_SEGMENT_LEN, 0.1f, GRASS_WIDTH));
-                bus.cube.draw(ourShader, model, glm::vec3(0.15f, 0.45f, 0.1f));
+                glm::mat4 model = glm::translate(glm::mat4(1.0f),
+                    glm::vec3(bx, yOff + sizes[c][1] * 0.5f, bz));
+                model = glm::scale(model, glm::vec3(sizes[c][0], sizes[c][1], sizes[c][2]));
+                bus.cube.draw(ourShader, model, colors[c]);
                 ourShader.setInt("textureMode", 0);
+                yOff += sizes[c][1];
             }
+        }
 
-            // --- BUILDINGS (both sides) ---
-            for (int side = -1; side <= 1; side += 2) {
-                for (int b = 0; b < BUILDINGS_PER_SEGMENT; b++) {
-                    int bSeed = segID * 100 + side * 50 + b;
+        // --- TALL BUILDING #1 WITH WINDOWS (right side) ---
+        {
+            float bx = -25.0f, bz = 10.0f;
+            float bw = 4.0f, bh = 12.0f, bd = 4.0f;
 
-                    // Random position within segment
-                    float bx = segX + cityRand(bSeed, 1) * ROAD_SEGMENT_LEN;
-                    float bz = side * (BUILDING_ZONE_START + cityRand(bSeed, 2) * (BUILDING_ZONE_END - BUILDING_ZONE_START));
+            if (texWall != 0) {
+                ourShader.setInt("textureMode", 3);
+                glActiveTexture(GL_TEXTURE0);
+                glBindTexture(GL_TEXTURE_2D, texWall);
+                ourShader.setInt("textureSampler", 0);
+            }
+            glm::mat4 model = glm::translate(glm::mat4(1.0f), glm::vec3(bx, bh * 0.5f, bz));
+            model = glm::scale(model, glm::vec3(bw, bh, bd));
+            bus.cube.draw(ourShader, model, glm::vec3(0.7f, 0.3f, 0.85f));
+            ourShader.setInt("textureMode", 0);
 
-                    // Random building type: 0=stacked cubes, 1=tall building, 2=cone tower
-                    int bType = (int)(cityRand(bSeed, 3) * 3.0f);
-                    int colorIdx = (int)(cityRand(bSeed, 4) * NUM_PALETTE_COLORS) % NUM_PALETTE_COLORS;
-                    glm::vec3 bColor = buildingPalette[colorIdx];
-
-                    // Choose texture for this building
-                    int texChoice = (int)(cityRand(bSeed, 10) * 4.0f);
-                    unsigned int bTex = 0;
-                    int bTexMode = 0;
-                    if (texChoice == 0 && texContainer != 0) { bTex = texContainer; bTexMode = 1; }
-                    else if (texChoice == 1 && texWall != 0) { bTex = texWall; bTexMode = 3; }
-                    else if (texChoice == 2 && texEmoji != 0) { bTex = texEmoji; bTexMode = 1; }
-                    // texChoice == 3 → pure color (no texture)
-
-                    if (bType == 0) {
-                        // ---- STACKED CUBES ----
-                        int numCubes = 1 + (int)(cityRand(bSeed, 5) * 4.0f);
-                        float yOffset = 0.0f;
-                        for (int c = 0; c < numCubes; c++) {
-                            float cw = 1.5f + cityRand(bSeed * 10 + c, 6) * 2.5f;
-                            float ch = 1.0f + cityRand(bSeed * 10 + c, 7) * 3.0f;
-                            float cd = 1.5f + cityRand(bSeed * 10 + c, 8) * 2.5f;
-                            int cc = (int)(cityRand(bSeed * 10 + c, 9) * NUM_PALETTE_COLORS) % NUM_PALETTE_COLORS;
-
-                            if (bTex != 0) {
-                                ourShader.setInt("textureMode", bTexMode);
-                                glActiveTexture(GL_TEXTURE0);
-                                glBindTexture(GL_TEXTURE_2D, bTex);
-                                ourShader.setInt("textureSampler", 0);
-                            }
-
-                            glm::mat4 model = glm::translate(glm::mat4(1.0f), 
-                                glm::vec3(bx, yOffset + ch * 0.5f, bz));
-                            model = glm::scale(model, glm::vec3(cw, ch, cd));
-                            bus.cube.draw(ourShader, model, buildingPalette[cc]);
-                            ourShader.setInt("textureMode", 0);
-
-                            yOffset += ch;
-                        }
-                    }
-                    else if (bType == 1) {
-                        // ---- TALL BUILDING ----
-                        float bw = 2.0f + cityRand(bSeed, 5) * 3.0f;
-                        float bh = 4.0f + cityRand(bSeed, 6) * 12.0f;
-                        float bd = 2.0f + cityRand(bSeed, 7) * 3.0f;
-
-                        if (bTex != 0) {
-                            ourShader.setInt("textureMode", bTexMode);
-                            glActiveTexture(GL_TEXTURE0);
-                            glBindTexture(GL_TEXTURE_2D, bTex);
-                            ourShader.setInt("textureSampler", 0);
-                        }
-
-                        glm::mat4 model = glm::translate(glm::mat4(1.0f), 
-                            glm::vec3(bx, bh * 0.5f, bz));
-                        model = glm::scale(model, glm::vec3(bw, bh, bd));
-                        bus.cube.draw(ourShader, model, bColor);
-                        ourShader.setInt("textureMode", 0);
-
-                        // Windows (small dark cubes on front face)
-                        int wRows = (int)(bh / 1.5f);
-                        int wCols = (int)(bw / 1.2f);
-                        if (wCols < 1) wCols = 1;
-                        for (int wr = 0; wr < wRows && wr < 6; wr++) {
-                            for (int wc = 0; wc < wCols && wc < 3; wc++) {
-                                float wx = bx - bw * 0.3f + wc * (bw * 0.6f / std::max(wCols - 1, 1));
-                                float wy = 1.5f + wr * 1.5f;
-                                float wz = bz + (side > 0 ? -bd * 0.52f : bd * 0.52f);
-                                glm::mat4 wModel = glm::translate(glm::mat4(1.0f), 
-                                    glm::vec3(wx, wy, wz));
-                                wModel = glm::scale(wModel, glm::vec3(0.6f, 0.8f, 0.05f));
-                                bus.cube.draw(ourShader, wModel, glm::vec3(0.05f, 0.08f, 0.15f));
-                            }
-                        }
-                    }
-                    else {
-                        // ---- CONE-TOPPED TOWER ----
-                        float radius = 1.0f + cityRand(bSeed, 5) * 1.5f;
-                        float towerH = 3.0f + cityRand(bSeed, 6) * 8.0f;
-                        float coneH = 1.5f + cityRand(bSeed, 7) * 2.0f;
-
-                        // Cylinder body
-                        if (bTex != 0) {
-                            ourShader.setInt("textureMode", bTexMode);
-                            glActiveTexture(GL_TEXTURE0);
-                            glBindTexture(GL_TEXTURE_2D, bTex);
-                            ourShader.setInt("textureSampler", 0);
-                        }
-
-                        glm::mat4 model = glm::translate(glm::mat4(1.0f), 
-                            glm::vec3(bx, towerH * 0.5f, bz));
-                        model = glm::scale(model, glm::vec3(radius, towerH, radius));
-                        bus.cylinder.draw(ourShader, model, bColor);
-                        ourShader.setInt("textureMode", 0);
-
-                        // Cone roof
-                        int roofColor = (colorIdx + 3) % NUM_PALETTE_COLORS;
-                        model = glm::translate(glm::mat4(1.0f), 
-                            glm::vec3(bx, towerH, bz));
-                        model = glm::scale(model, glm::vec3(radius * 1.3f, coneH, radius * 1.3f));
-                        sceneCone.draw(ourShader, model, buildingPalette[roofColor]);
-                    }
+            // Windows on road-facing side
+            for (int wr = 0; wr < 5; wr++) {
+                for (int wc = 0; wc < 2; wc++) {
+                    float wx = bx - 1.0f + wc * 2.0f;
+                    float wy = 1.8f + wr * 2.0f;
+                    float wz = bz - bd * 0.52f;
+                    glm::mat4 wModel = glm::translate(glm::mat4(1.0f), glm::vec3(wx, wy, wz));
+                    wModel = glm::scale(wModel, glm::vec3(0.8f, 1.0f, 0.05f));
+                    bus.cube.draw(ourShader, wModel, glm::vec3(0.05f, 0.08f, 0.15f));
                 }
             }
         }
-        ourShader.setInt("textureMode", 0);
 
+        // --- TALL BUILDING #2 WITH WINDOWS (left side, further along) ---
+        {
+            float bx = -60.0f, bz = -11.0f;
+            float bw = 5.0f, bh = 15.0f, bd = 5.0f;
+
+            if (texWall != 0) {
+                ourShader.setInt("textureMode", 3);
+                glActiveTexture(GL_TEXTURE0);
+                glBindTexture(GL_TEXTURE_2D, texWall);
+                ourShader.setInt("textureSampler", 0);
+            }
+            glm::mat4 model = glm::translate(glm::mat4(1.0f), glm::vec3(bx, bh * 0.5f, bz));
+            model = glm::scale(model, glm::vec3(bw, bh, bd));
+            bus.cube.draw(ourShader, model, glm::vec3(0.2f, 0.65f, 0.9f));
+            ourShader.setInt("textureMode", 0);
+
+            // Windows on road-facing side
+            for (int wr = 0; wr < 6; wr++) {
+                for (int wc = 0; wc < 2; wc++) {
+                    float wx = bx - 1.2f + wc * 2.4f;
+                    float wy = 2.0f + wr * 2.0f;
+                    float wz = bz + bd * 0.52f;
+                    glm::mat4 wModel = glm::translate(glm::mat4(1.0f), glm::vec3(wx, wy, wz));
+                    wModel = glm::scale(wModel, glm::vec3(0.9f, 1.1f, 0.05f));
+                    bus.cube.draw(ourShader, wModel, glm::vec3(0.05f, 0.08f, 0.15f));
+                }
+            }
+        }
+
+        // --- CONE-TOPPED TOWER #1 (left side) ---
+        // Cylinder: height goes from 0 to towerH (center at towerH/2)
+        // Cone: sits on top, center at towerH + coneH/2
+        {
+            float bx = -40.0f, bz = -12.0f;
+            float radius = 2.0f, towerH = 8.0f, coneH = 3.0f;
+
+            // Cylinder body — use container2.png (512x512, square, clean UV)
+            if (texContainer != 0) {
+                ourShader.setInt("textureMode", 3);
+                glActiveTexture(GL_TEXTURE0);
+                glBindTexture(GL_TEXTURE_2D, texContainer);
+                ourShader.setInt("textureSampler", 0);
+            }
+            glm::mat4 model = glm::translate(glm::mat4(1.0f), glm::vec3(bx, towerH * 0.5f, bz));
+            model = glm::scale(model, glm::vec3(radius * 2.0f, towerH, radius * 2.0f));
+            bus.cylinder.draw(ourShader, model, glm::vec3(0.1f, 0.85f, 0.75f));
+            ourShader.setInt("textureMode", 0);
+
+            // Cone roof — sits ON TOP of cylinder (no overlap)
+            model = glm::translate(glm::mat4(1.0f), glm::vec3(bx, towerH + coneH * 0.5f, bz));
+            model = glm::scale(model, glm::vec3(radius * 2.8f, coneH, radius * 2.8f));
+            sceneCone.draw(ourShader, model, glm::vec3(0.95f, 0.55f, 0.1f));
+        }
+
+        // --- CONE-TOPPED TOWER #2 (right side, further along) ---
+        {
+            float bx = -75.0f, bz = 13.0f;
+            float radius = 1.5f, towerH = 6.0f, coneH = 2.5f;
+
+            if (texContainer != 0) {
+                ourShader.setInt("textureMode", 3);
+                glActiveTexture(GL_TEXTURE0);
+                glBindTexture(GL_TEXTURE_2D, texContainer);
+                ourShader.setInt("textureSampler", 0);
+            }
+            glm::mat4 model = glm::translate(glm::mat4(1.0f), glm::vec3(bx, towerH * 0.5f, bz));
+            model = glm::scale(model, glm::vec3(radius * 2.0f, towerH, radius * 2.0f));
+            bus.cylinder.draw(ourShader, model, glm::vec3(0.85f, 0.15f, 0.55f));
+            ourShader.setInt("textureMode", 0);
+
+            // Cone roof — ON TOP
+            model = glm::translate(glm::mat4(1.0f), glm::vec3(bx, towerH + coneH * 0.5f, bz));
+            model = glm::scale(model, glm::vec3(radius * 2.8f, coneH, radius * 2.8f));
+            sceneCone.draw(ourShader, model, glm::vec3(0.2f, 0.8f, 0.3f));
+        }
+
+        ourShader.setInt("textureMode", 0);
         glfwSwapBuffers(window);
         glfwPollEvents();
     }
@@ -776,7 +806,7 @@ int main()
 }
 
 // ============================================================================
-// MOUSE CALLBACK — look around (FPS-style)
+// MOUSE CALLBACK â€” look around (FPS-style)
 // ============================================================================
 void mouse_callback(GLFWwindow* window, double xposIn, double yposIn) {
     if (!mouseCaptured) return;
@@ -804,7 +834,7 @@ void mouse_callback(GLFWwindow* window, double xposIn, double yposIn) {
 }
 
 // ============================================================================
-// SCROLL CALLBACK — zoom in/out (change FOV)
+// SCROLL CALLBACK â€” zoom in/out (change FOV)
 // ============================================================================
 void scroll_callback(GLFWwindow* window, double xoffset, double yoffset) {
     cameraFOV -= (float)yoffset * 2.0f;
@@ -813,7 +843,7 @@ void scroll_callback(GLFWwindow* window, double xoffset, double yoffset) {
 }
 
 // ============================================================================
-// PROCESS INPUT — continuous key handling
+// PROCESS INPUT â€” continuous key handling
 // ============================================================================
 void processInput(GLFWwindow* window) {
     if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
@@ -897,7 +927,7 @@ void processInput(GLFWwindow* window) {
 }
 
 // ============================================================================
-// KEY CALLBACK — discrete key presses
+// KEY CALLBACK â€” discrete key presses
 // ============================================================================
 void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods) {
     if (action != GLFW_PRESS) return;
