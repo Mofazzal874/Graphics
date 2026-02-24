@@ -1,0 +1,44 @@
+﻿  main.cpp
+D:\Academics\Graphics\Lab_4\codes\basic_camera.h(62,24): warning C4244: 'initializing': conversion from 'double' to 'float', possible loss of data
+  (compiling source file '../Lab_4/codes/main.cpp')
+  
+D:\Academics\Graphics\Lab_4\codes\main.cpp(306,44): warning C4305: '-=': truncation from 'double' to 'float'
+D:\Academics\Graphics\Lab_4\codes\main.cpp(307,49): warning C4305: '-=': truncation from 'double' to 'float'
+D:\Academics\Graphics\Lab_4\codes\main.cpp(308,31): warning C4305: '-=': truncation from 'double' to 'float'
+D:\Academics\Graphics\Lab_4\codes\main.cpp(310,70): warning C4305: '+=': truncation from 'double' to 'float'
+D:\Academics\Graphics\Lab_4\codes\main.cpp(311,70): warning C4305: '-=': truncation from 'double' to 'float'
+D:\Academics\Graphics\Lab_4\codes\main.cpp(312,70): warning C4305: '+=': truncation from 'double' to 'float'
+D:\Academics\Graphics\Lab_4\codes\main.cpp(313,70): warning C4305: '-=': truncation from 'double' to 'float'
+D:\Academics\Graphics\Lab_4\codes\main.cpp(314,70): warning C4305: '+=': truncation from 'double' to 'float'
+D:\Academics\Graphics\Lab_4\codes\main.cpp(315,70): warning C4305: '-=': truncation from 'double' to 'float'
+D:\Academics\Graphics\Lab_4\codes\main.cpp(316,66): warning C4305: '+=': truncation from 'double' to 'float'
+D:\Academics\Graphics\Lab_4\codes\main.cpp(317,66): warning C4305: '-=': truncation from 'double' to 'float'
+D:\Academics\Graphics\Lab_4\codes\main.cpp(318,66): warning C4305: '+=': truncation from 'double' to 'float'
+D:\Academics\Graphics\Lab_4\codes\main.cpp(319,66): warning C4305: '-=': truncation from 'double' to 'float'
+D:\Academics\Graphics\Lab_4\codes\main.cpp(320,66): warning C4305: '+=': truncation from 'double' to 'float'
+D:\Academics\Graphics\Lab_4\codes\main.cpp(321,66): warning C4305: '-=': truncation from 'double' to 'float'
+D:\Academics\Graphics\Lab_4\codes\main.cpp(325,26): warning C4305: '+=': truncation from 'double' to 'float'
+D:\Academics\Graphics\Lab_4\codes\main.cpp(332,26): warning C4305: '+=': truncation from 'double' to 'float'
+D:\Academics\Graphics\Lab_4\codes\main.cpp(339,26): warning C4305: '+=': truncation from 'double' to 'float'
+D:\Academics\Graphics\Lab_4\codes\main.cpp(347,21): warning C4244: '+=': conversion from 'double' to 'float', possible loss of data
+D:\Academics\Graphics\Lab_4\codes\main.cpp(352,21): warning C4244: '-=': conversion from 'double' to 'float', possible loss of data
+D:\Academics\Graphics\Lab_4\codes\main.cpp(357,21): warning C4244: '+=': conversion from 'double' to 'float', possible loss of data
+D:\Academics\Graphics\Lab_4\codes\main.cpp(362,21): warning C4244: '-=': conversion from 'double' to 'float', possible loss of data
+D:\Academics\Graphics\Lab_4\codes\main.cpp(367,21): warning C4244: '+=': conversion from 'double' to 'float', possible loss of data
+D:\Academics\Graphics\Lab_4\codes\main.cpp(372,21): warning C4244: '-=': conversion from 'double' to 'float', possible loss of data
+glfw3.lib(init.obj) : warning LNK4099: PDB 'glfw3.pdb' was not found with 'glfw3.lib(init.obj)' or at 'D:\Academics\Graphics\Lab4 Task\x64\Debug\glfw3.pdb'; linking object as if no debug info
+glfw3.lib(window.obj) : warning LNK4099: PDB 'glfw3.pdb' was not found with 'glfw3.lib(window.obj)' or at 'D:\Academics\Graphics\Lab4 Task\x64\Debug\glfw3.pdb'; linking object as if no debug info
+glfw3.lib(input.obj) : warning LNK4099: PDB 'glfw3.pdb' was not found with 'glfw3.lib(input.obj)' or at 'D:\Academics\Graphics\Lab4 Task\x64\Debug\glfw3.pdb'; linking object as if no debug info
+glfw3.lib(context.obj) : warning LNK4099: PDB 'glfw3.pdb' was not found with 'glfw3.lib(context.obj)' or at 'D:\Academics\Graphics\Lab4 Task\x64\Debug\glfw3.pdb'; linking object as if no debug info
+glfw3.lib(win32_init.obj) : warning LNK4099: PDB 'glfw3.pdb' was not found with 'glfw3.lib(win32_init.obj)' or at 'D:\Academics\Graphics\Lab4 Task\x64\Debug\glfw3.pdb'; linking object as if no debug info
+glfw3.lib(win32_monitor.obj) : warning LNK4099: PDB 'glfw3.pdb' was not found with 'glfw3.lib(win32_monitor.obj)' or at 'D:\Academics\Graphics\Lab4 Task\x64\Debug\glfw3.pdb'; linking object as if no debug info
+glfw3.lib(win32_time.obj) : warning LNK4099: PDB 'glfw3.pdb' was not found with 'glfw3.lib(win32_time.obj)' or at 'D:\Academics\Graphics\Lab4 Task\x64\Debug\glfw3.pdb'; linking object as if no debug info
+glfw3.lib(win32_thread.obj) : warning LNK4099: PDB 'glfw3.pdb' was not found with 'glfw3.lib(win32_thread.obj)' or at 'D:\Academics\Graphics\Lab4 Task\x64\Debug\glfw3.pdb'; linking object as if no debug info
+glfw3.lib(monitor.obj) : warning LNK4099: PDB 'glfw3.pdb' was not found with 'glfw3.lib(monitor.obj)' or at 'D:\Academics\Graphics\Lab4 Task\x64\Debug\glfw3.pdb'; linking object as if no debug info
+glfw3.lib(vulkan.obj) : warning LNK4099: PDB 'glfw3.pdb' was not found with 'glfw3.lib(vulkan.obj)' or at 'D:\Academics\Graphics\Lab4 Task\x64\Debug\glfw3.pdb'; linking object as if no debug info
+glfw3.lib(win32_window.obj) : warning LNK4099: PDB 'glfw3.pdb' was not found with 'glfw3.lib(win32_window.obj)' or at 'D:\Academics\Graphics\Lab4 Task\x64\Debug\glfw3.pdb'; linking object as if no debug info
+glfw3.lib(win32_joystick.obj) : warning LNK4099: PDB 'glfw3.pdb' was not found with 'glfw3.lib(win32_joystick.obj)' or at 'D:\Academics\Graphics\Lab4 Task\x64\Debug\glfw3.pdb'; linking object as if no debug info
+glfw3.lib(wgl_context.obj) : warning LNK4099: PDB 'glfw3.pdb' was not found with 'glfw3.lib(wgl_context.obj)' or at 'D:\Academics\Graphics\Lab4 Task\x64\Debug\glfw3.pdb'; linking object as if no debug info
+glfw3.lib(egl_context.obj) : warning LNK4099: PDB 'glfw3.pdb' was not found with 'glfw3.lib(egl_context.obj)' or at 'D:\Academics\Graphics\Lab4 Task\x64\Debug\glfw3.pdb'; linking object as if no debug info
+glfw3.lib(osmesa_context.obj) : warning LNK4099: PDB 'glfw3.pdb' was not found with 'glfw3.lib(osmesa_context.obj)' or at 'D:\Academics\Graphics\Lab4 Task\x64\Debug\glfw3.pdb'; linking object as if no debug info
+  Lab4 Task.vcxproj -> D:\Academics\Graphics\Lab4 Task\x64\Debug\Lab4 Task.exe
