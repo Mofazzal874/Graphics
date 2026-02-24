@@ -5,6 +5,8 @@
 #include <glm/gtc/type_ptr.hpp>
 #include <iostream>
 #include <cmath>
+#include <vector>
+#include <cstdlib>
 #include "Shader.h"
 #include "Bus.h"
 
@@ -56,6 +58,8 @@ bool fanSpinning = false;
 // ============================================================================
 bool isDrivingMode = true; // Driving is the default
 glm::vec3 busPosition = glm::vec3(0.0f, 0.0f, 0.0f);
+float busAltitude = 0.0f;   // User-controlled hover altitude
+float busVerticalSpeed = 0.0f;
 float busYaw = 0.0f;
 float busSpeed = 0.0f;
 float busSteerAngle = 0.0f;
@@ -66,6 +70,8 @@ const float MAX_SPEED = 20.0f;
 const float STEER_SPEED = 60.0f;
 const float MAX_STEER = 35.0f;
 const float HOVER_HEIGHT = 1.5f;
+const float VERTICAL_ACCEL = 12.0f;
+const float MAX_ALTITUDE = 50.0f;
 
 // ============================================================================
 // GLOBAL LIGHTING STATE
@@ -85,10 +91,51 @@ unsigned int texFloor = 0, texCarpet = 0, texFabric = 0;
 unsigned int texWall = 0, texDashboard = 0, texBusBody = 0;
 unsigned int texSphere = 0, texCone = 0;
 
+// City environment textures
+unsigned int texRoad = 0, texGrass = 0;
+unsigned int texContainer = 0, texEmoji = 0;
+
 Sphere sceneSphere;
 Cone sceneCone;
 
 int sceneTextureMode = 1;
+
+// ============================================================================
+// CITY ENVIRONMENT CONSTANTS
+// ============================================================================
+const float ROAD_WIDTH = 8.0f;
+const float ROAD_SEGMENT_LEN = 20.0f;
+const int   VISIBLE_SEGMENTS = 30;        // segments ahead + behind
+const float GRASS_WIDTH = 50.0f;
+const float BUILDING_ZONE_START = 6.0f;   // distance from road center
+const float BUILDING_ZONE_END = 40.0f;
+const int   BUILDINGS_PER_SEGMENT = 6;    // buildings per side per segment
+
+// Simple deterministic hash for building placement
+unsigned int cityHash(int x, int y) {
+    unsigned int h = (unsigned int)(x * 374761393 + y * 668265263);
+    h = (h ^ (h >> 13)) * 1274126177;
+    return h ^ (h >> 16);
+}
+
+float cityRand(int seed, int id) {
+    return (float)(cityHash(seed, id) % 10000) / 10000.0f;
+}
+
+// Pre-defined bright color palette for buildings
+glm::vec3 buildingPalette[] = {
+    glm::vec3(0.85f, 0.2f, 0.2f),   // Red
+    glm::vec3(0.2f, 0.65f, 0.9f),   // Blue
+    glm::vec3(0.2f, 0.8f, 0.3f),    // Green
+    glm::vec3(0.9f, 0.85f, 0.1f),   // Yellow
+    glm::vec3(0.7f, 0.3f, 0.85f),   // Purple
+    glm::vec3(0.95f, 0.55f, 0.1f),  // Orange
+    glm::vec3(0.1f, 0.85f, 0.75f),  // Cyan
+    glm::vec3(0.85f, 0.15f, 0.55f), // Pink
+    glm::vec3(0.5f, 0.5f, 0.85f),   // Periwinkle
+    glm::vec3(0.3f, 0.75f, 0.5f),   // Teal
+};
+const int NUM_PALETTE_COLORS = 10;
 
 int currentWrapIndex = 0;
 GLenum wrapModes[] = { GL_REPEAT, GL_CLAMP_TO_EDGE, GL_MIRRORED_REPEAT };
@@ -158,7 +205,7 @@ glm::vec3 getBusRight() {
 
 glm::mat4 getViewMatrix() {
     glm::vec3 busRenderPos = busPosition;
-    busRenderPos.y += HOVER_HEIGHT + bus.hoverBobOffset;
+    busRenderPos.y += HOVER_HEIGHT + bus.hoverBobOffset + busAltitude;
 
     if (cameraMode == 1) {
         // === CHASE CAMERA (3rd person behind bus, jet engine visible) ===
@@ -373,6 +420,12 @@ int main()
     texBusBody   = loadTexture("textures/busbody.jpg",   GL_CLAMP_TO_EDGE,   GL_NEAREST);
     texSphere    = loadTexture("textures/sphere.jpg",    GL_REPEAT,          GL_LINEAR);
     texCone      = loadTexture("textures/cone.jpg",      GL_MIRRORED_REPEAT, GL_NEAREST);
+
+    // City environment textures
+    texRoad      = loadTexture("textures/road.jpg",      GL_REPEAT,          GL_LINEAR);
+    texGrass     = loadTexture("textures/grass.jpg",     GL_REPEAT,          GL_LINEAR);
+    texContainer = loadTexture("textures/container2.png", GL_REPEAT,         GL_LINEAR);
+    texEmoji     = loadTexture("textures/emoji.png",     GL_CLAMP_TO_EDGE,   GL_LINEAR);
     std::cout << "========================" << std::endl;
 
     // Assign to bus
@@ -449,7 +502,7 @@ int main()
         glfwGetFramebufferSize(window, &fbWidth, &fbHeight);
 
         glViewport(0, 0, fbWidth, fbHeight);
-        glClearColor(0.08f, 0.08f, 0.12f, 1.0f);
+        glClearColor(0.53f, 0.72f, 0.92f, 1.0f);  // Light blue sky
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         ourShader.use();
@@ -519,7 +572,7 @@ int main()
 
         // View & Projection
         float aspect = (float)fbWidth / (float)fbHeight;
-        glm::mat4 projection = glm::perspective(glm::radians(cameraFOV), aspect, 0.1f, 200.0f);
+        glm::mat4 projection = glm::perspective(glm::radians(cameraFOV), aspect, 0.1f, 500.0f);
         glm::mat4 view = getViewMatrix();
         ourShader.setMat4("projection", projection);
         ourShader.setMat4("view", view);
@@ -527,7 +580,7 @@ int main()
         // ==================== DRAW BUS ====================
         glm::mat4 busTransform = glm::mat4(1.0f);
         glm::vec3 renderPos = busPosition;
-        renderPos.y += HOVER_HEIGHT + bus.hoverBobOffset;
+        renderPos.y += HOVER_HEIGHT + bus.hoverBobOffset + busAltitude;
         busTransform = glm::translate(busTransform, renderPos);
         busTransform = glm::rotate(busTransform, glm::radians(busYaw), glm::vec3(0, 1, 0));
 
@@ -536,39 +589,176 @@ int main()
         bus.draw(ourShader, busTransform);
         bus.jetEngineOn = savedJetOn;
 
-        // ==================== GROUND PLANE ====================
-        ourShader.setInt("textureMode", 0);
-        {
-            // Use the bus's cube (already initialized) for ground
-            glm::mat4 model = glm::translate(glm::mat4(1.0f), glm::vec3(0, -0.5f, 0));
-            model = glm::scale(model, glm::vec3(100.0f, 0.1f, 100.0f));
-            bus.cube.draw(ourShader, model, glm::vec3(0.2f, 0.22f, 0.2f));
-        }
+        // ==================== CITY ENVIRONMENT ====================
+        // The road runs along the X-axis. Bus starts at (0,0,0) facing -X.
+        // We generate road segments and buildings relative to the bus X position.
 
-        // ==================== SCENE OBJECTS (Sphere & Cone) ====================
-        if (texSphere != 0) {
-            ourShader.setInt("textureMode", sceneTextureMode);
-            glActiveTexture(GL_TEXTURE0);
-            glBindTexture(GL_TEXTURE_2D, texSphere);
-            ourShader.setInt("textureSampler", 0);
-        }
-        {
-            glm::mat4 model = glm::translate(glm::mat4(1.0f), glm::vec3(15, 3, 0));
-            model = glm::scale(model, glm::vec3(4, 4, 4));
-            sceneSphere.draw(ourShader, model, glm::vec3(0.3f, 0.6f, 0.9f));
-        }
-        ourShader.setInt("textureMode", 0);
+        float busX = busPosition.x;
+        // Snap to nearest segment boundary
+        float segStart = floor(busX / ROAD_SEGMENT_LEN) * ROAD_SEGMENT_LEN;
 
-        if (texCone != 0) {
-            ourShader.setInt("textureMode", sceneTextureMode);
-            glActiveTexture(GL_TEXTURE0);
-            glBindTexture(GL_TEXTURE_2D, texCone);
-            ourShader.setInt("textureSampler", 0);
-        }
-        {
-            glm::mat4 model = glm::translate(glm::mat4(1.0f), glm::vec3(15, 2, 8));
-            model = glm::scale(model, glm::vec3(3, 4, 3));
-            sceneCone.draw(ourShader, model, glm::vec3(0.9f, 0.5f, 0.2f));
+        for (int seg = -VISIBLE_SEGMENTS / 2; seg <= VISIBLE_SEGMENTS / 2; seg++) {
+            float segX = segStart + seg * ROAD_SEGMENT_LEN;
+            int segID = (int)floor(segX / ROAD_SEGMENT_LEN);
+
+            // --- ROAD SEGMENT ---
+            {
+                ourShader.setInt("textureMode", 0);
+                if (texRoad != 0) {
+                    ourShader.setInt("textureMode", 1);
+                    glActiveTexture(GL_TEXTURE0);
+                    glBindTexture(GL_TEXTURE_2D, texRoad);
+                    ourShader.setInt("textureSampler", 0);
+                }
+                glm::mat4 model = glm::translate(glm::mat4(1.0f), 
+                    glm::vec3(segX + ROAD_SEGMENT_LEN * 0.5f, -0.05f, 0.0f));
+                model = glm::scale(model, glm::vec3(ROAD_SEGMENT_LEN, 0.1f, ROAD_WIDTH));
+                bus.cube.draw(ourShader, model, glm::vec3(0.08f, 0.08f, 0.08f));
+                ourShader.setInt("textureMode", 0);
+            }
+
+            // --- WHITE DASHED CENTER DIVIDER ---
+            {
+                int numDashes = 4;
+                float dashLen = ROAD_SEGMENT_LEN / (numDashes * 2.0f);
+                for (int d = 0; d < numDashes; d++) {
+                    float dx = segX + d * (dashLen * 2.0f) + dashLen * 0.5f;
+                    glm::mat4 model = glm::translate(glm::mat4(1.0f), 
+                        glm::vec3(dx, 0.01f, 0.0f));
+                    model = glm::scale(model, glm::vec3(dashLen * 0.8f, 0.02f, 0.15f));
+                    bus.cube.draw(ourShader, model, glm::vec3(1.0f, 1.0f, 1.0f));
+                }
+            }
+
+            // --- GRASS STRIPS (both sides) ---
+            for (int side = -1; side <= 1; side += 2) {
+                float grassZ = side * (ROAD_WIDTH * 0.5f + GRASS_WIDTH * 0.5f);
+                if (texGrass != 0) {
+                    ourShader.setInt("textureMode", 3);
+                    glActiveTexture(GL_TEXTURE0);
+                    glBindTexture(GL_TEXTURE_2D, texGrass);
+                    ourShader.setInt("textureSampler", 0);
+                }
+                glm::mat4 model = glm::translate(glm::mat4(1.0f), 
+                    glm::vec3(segX + ROAD_SEGMENT_LEN * 0.5f, -0.1f, grassZ));
+                model = glm::scale(model, glm::vec3(ROAD_SEGMENT_LEN, 0.1f, GRASS_WIDTH));
+                bus.cube.draw(ourShader, model, glm::vec3(0.15f, 0.45f, 0.1f));
+                ourShader.setInt("textureMode", 0);
+            }
+
+            // --- BUILDINGS (both sides) ---
+            for (int side = -1; side <= 1; side += 2) {
+                for (int b = 0; b < BUILDINGS_PER_SEGMENT; b++) {
+                    int bSeed = segID * 100 + side * 50 + b;
+
+                    // Random position within segment
+                    float bx = segX + cityRand(bSeed, 1) * ROAD_SEGMENT_LEN;
+                    float bz = side * (BUILDING_ZONE_START + cityRand(bSeed, 2) * (BUILDING_ZONE_END - BUILDING_ZONE_START));
+
+                    // Random building type: 0=stacked cubes, 1=tall building, 2=cone tower
+                    int bType = (int)(cityRand(bSeed, 3) * 3.0f);
+                    int colorIdx = (int)(cityRand(bSeed, 4) * NUM_PALETTE_COLORS) % NUM_PALETTE_COLORS;
+                    glm::vec3 bColor = buildingPalette[colorIdx];
+
+                    // Choose texture for this building
+                    int texChoice = (int)(cityRand(bSeed, 10) * 4.0f);
+                    unsigned int bTex = 0;
+                    int bTexMode = 0;
+                    if (texChoice == 0 && texContainer != 0) { bTex = texContainer; bTexMode = 1; }
+                    else if (texChoice == 1 && texWall != 0) { bTex = texWall; bTexMode = 3; }
+                    else if (texChoice == 2 && texEmoji != 0) { bTex = texEmoji; bTexMode = 1; }
+                    // texChoice == 3 → pure color (no texture)
+
+                    if (bType == 0) {
+                        // ---- STACKED CUBES ----
+                        int numCubes = 1 + (int)(cityRand(bSeed, 5) * 4.0f);
+                        float yOffset = 0.0f;
+                        for (int c = 0; c < numCubes; c++) {
+                            float cw = 1.5f + cityRand(bSeed * 10 + c, 6) * 2.5f;
+                            float ch = 1.0f + cityRand(bSeed * 10 + c, 7) * 3.0f;
+                            float cd = 1.5f + cityRand(bSeed * 10 + c, 8) * 2.5f;
+                            int cc = (int)(cityRand(bSeed * 10 + c, 9) * NUM_PALETTE_COLORS) % NUM_PALETTE_COLORS;
+
+                            if (bTex != 0) {
+                                ourShader.setInt("textureMode", bTexMode);
+                                glActiveTexture(GL_TEXTURE0);
+                                glBindTexture(GL_TEXTURE_2D, bTex);
+                                ourShader.setInt("textureSampler", 0);
+                            }
+
+                            glm::mat4 model = glm::translate(glm::mat4(1.0f), 
+                                glm::vec3(bx, yOffset + ch * 0.5f, bz));
+                            model = glm::scale(model, glm::vec3(cw, ch, cd));
+                            bus.cube.draw(ourShader, model, buildingPalette[cc]);
+                            ourShader.setInt("textureMode", 0);
+
+                            yOffset += ch;
+                        }
+                    }
+                    else if (bType == 1) {
+                        // ---- TALL BUILDING ----
+                        float bw = 2.0f + cityRand(bSeed, 5) * 3.0f;
+                        float bh = 4.0f + cityRand(bSeed, 6) * 12.0f;
+                        float bd = 2.0f + cityRand(bSeed, 7) * 3.0f;
+
+                        if (bTex != 0) {
+                            ourShader.setInt("textureMode", bTexMode);
+                            glActiveTexture(GL_TEXTURE0);
+                            glBindTexture(GL_TEXTURE_2D, bTex);
+                            ourShader.setInt("textureSampler", 0);
+                        }
+
+                        glm::mat4 model = glm::translate(glm::mat4(1.0f), 
+                            glm::vec3(bx, bh * 0.5f, bz));
+                        model = glm::scale(model, glm::vec3(bw, bh, bd));
+                        bus.cube.draw(ourShader, model, bColor);
+                        ourShader.setInt("textureMode", 0);
+
+                        // Windows (small dark cubes on front face)
+                        int wRows = (int)(bh / 1.5f);
+                        int wCols = (int)(bw / 1.2f);
+                        if (wCols < 1) wCols = 1;
+                        for (int wr = 0; wr < wRows && wr < 6; wr++) {
+                            for (int wc = 0; wc < wCols && wc < 3; wc++) {
+                                float wx = bx - bw * 0.3f + wc * (bw * 0.6f / std::max(wCols - 1, 1));
+                                float wy = 1.5f + wr * 1.5f;
+                                float wz = bz + (side > 0 ? -bd * 0.52f : bd * 0.52f);
+                                glm::mat4 wModel = glm::translate(glm::mat4(1.0f), 
+                                    glm::vec3(wx, wy, wz));
+                                wModel = glm::scale(wModel, glm::vec3(0.6f, 0.8f, 0.05f));
+                                bus.cube.draw(ourShader, wModel, glm::vec3(0.05f, 0.08f, 0.15f));
+                            }
+                        }
+                    }
+                    else {
+                        // ---- CONE-TOPPED TOWER ----
+                        float radius = 1.0f + cityRand(bSeed, 5) * 1.5f;
+                        float towerH = 3.0f + cityRand(bSeed, 6) * 8.0f;
+                        float coneH = 1.5f + cityRand(bSeed, 7) * 2.0f;
+
+                        // Cylinder body
+                        if (bTex != 0) {
+                            ourShader.setInt("textureMode", bTexMode);
+                            glActiveTexture(GL_TEXTURE0);
+                            glBindTexture(GL_TEXTURE_2D, bTex);
+                            ourShader.setInt("textureSampler", 0);
+                        }
+
+                        glm::mat4 model = glm::translate(glm::mat4(1.0f), 
+                            glm::vec3(bx, towerH * 0.5f, bz));
+                        model = glm::scale(model, glm::vec3(radius, towerH, radius));
+                        bus.cylinder.draw(ourShader, model, bColor);
+                        ourShader.setInt("textureMode", 0);
+
+                        // Cone roof
+                        int roofColor = (colorIdx + 3) % NUM_PALETTE_COLORS;
+                        model = glm::translate(glm::mat4(1.0f), 
+                            glm::vec3(bx, towerH, bz));
+                        model = glm::scale(model, glm::vec3(radius * 1.3f, coneH, radius * 1.3f));
+                        sceneCone.draw(ourShader, model, buildingPalette[roofColor]);
+                    }
+                }
+            }
         }
         ourShader.setInt("textureMode", 0);
 
@@ -661,6 +851,21 @@ void processInput(GLFWwindow* window) {
         busPosition += forwardDir * busSpeed * deltaTime;
         bus.steeringAngle = busSteerAngle;
         bus.jetEngineOn = true;
+
+        // Up/Down hover control
+        float vertInput = 0.0f;
+        if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) vertInput = 1.0f;
+        if (glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS) vertInput = -1.0f;
+        if (vertInput != 0.0f)
+            busVerticalSpeed += vertInput * VERTICAL_ACCEL * deltaTime;
+        else {
+            // Dampen vertical speed
+            if (busVerticalSpeed > 0) busVerticalSpeed = std::max(0.0f, busVerticalSpeed - VERTICAL_ACCEL * 0.7f * deltaTime);
+            if (busVerticalSpeed < 0) busVerticalSpeed = std::min(0.0f, busVerticalSpeed + VERTICAL_ACCEL * 0.7f * deltaTime);
+        }
+        busVerticalSpeed = glm::clamp(busVerticalSpeed, -15.0f, 15.0f);
+        busAltitude += busVerticalSpeed * deltaTime;
+        busAltitude = glm::clamp(busAltitude, 0.0f, MAX_ALTITUDE);
     }
 
     // ================================================================
