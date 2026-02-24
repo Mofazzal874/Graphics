@@ -1,0 +1,63 @@
+
+=== Loading Textures ===
+  Loading: textures/floor.jpg... 540x360... [OK]
+  Loading: textures/carpet.jpg... [--] not found
+  Loading: textures/fabric.jpg... 213x237... [OK]
+  Loading: textures/wall.jpg... 3723x2000... resized->2048x1100... [OK]
+  Loading: textures/dashboard.jpg... [--] not found
+  Loading: textures/busbody.jpg... 318x158... [OK]
+  Loading: textures/sphere.jpg... [--] not found
+  Loading: textures/cone.jpg... [--] not found
+========================
+DEBUG: All textures loaded, assigning to bus...
+DEBUG: Bus textures assigned. Starting render loop...
+=====================================================
+       HOVER BUS - GAME CONTROLS                     
+=====================================================
+
+  --- MOVEMENT (Free Camera) ---
+  W/S         Forward / Backward
+  A/D         Strafe Left / Right
+  Space       Move Up
+  Left Ctrl   Move Down
+  Shift       Speed Boost (2x)
+  Mouse       Look Around
+  Scroll      Zoom In / Out
+  Q / E       Roll Left / Right
+  F (hold)    Orbit Around Bus
+
+  --- DRIVING MODE ---
+  K           Toggle Driving Mode
+  W/S         Thrust / Brake
+  A/D         Steer Left / Right
+
+  --- CAMERA ---
+  V           Cycle Camera (Free/Chase/Interior)
+  M           Toggle Mouse Capture
+
+  --- BUS ---
+  B           Open/Close Front Door
+  G           Toggle Ceiling Fan
+  L           Toggle Interior Lights
+
+  --- TEXTURE ---
+  T           Cycle Texture Mode (Off/Pure/Vertex/Fragment)
+  8           Cycle Wrap Mode
+  9           Cycle Filter Mode
+  0           Toggle ALL Textures On/Off
+
+  --- LIGHTING ---
+  1           Directional Light
+  2           Point Lights
+  3           Spotlight (flashlight)
+  4           Emissive Glow
+  5/6/7       Ambient / Diffuse / Specular
+
+  TAB         Print Status
+  ESC         Exit
+=====================================================
+
+TIP: Press V to switch to Interior Camera to see
+     the textured seats, floor, and walls inside!
+     Press K to start driving.
+
