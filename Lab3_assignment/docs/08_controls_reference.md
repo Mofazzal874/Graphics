@@ -1,10 +1,13 @@
 # Controls Reference — Hover Bus Simulation
 
 This document lists every keyboard and mouse control available in the Hover Bus application.
+All controls are handled in [assignment.cpp](file:///d:/Academics/Graphics/Lab3_assignment/assignment.cpp).
 
 ---
 
 ## 1. Bus Driving Controls (Always Active)
+
+> **Source**: [processInput()](file:///d:/Academics/Graphics/Lab3_assignment/assignment.cpp#L863-L927) in `assignment.cpp` — called every frame.
 
 | Key | Action | Details |
 |-----|--------|---------|
@@ -17,12 +20,15 @@ This document lists every keyboard and mouse control available in the Hover Bus 
 
 ### Driving Physics
 
+> **Source**: [assignment.cpp:L871–L899](file:///d:/Academics/Graphics/Lab3_assignment/assignment.cpp#L871-L899) — speed, steering, and altitude logic.
+
 - **Speed** is clamped to `±MAX_SPEED` (= 30 units/sec).
 - When no thrust is applied, natural **deceleration** (`DECELERATION = 10.0`) slows the bus.
 - **Steering** has auto-center: when A/D are released, `busSteerAngle` returns to 0.
 - **Vertical movement** has smooth acceleration/deceleration and is clamped to `[0, 50]` for altitude.
 
-```
+```cpp
+// assignment.cpp:L877–L896
 busSpeed += ACCELERATION * deltaTime;        // W pressed
 busSpeed = glm::clamp(busSpeed, -MAX_SPEED, MAX_SPEED);
 busYaw  += busSteerAngle * busSpeed * deltaTime * 0.1f;
@@ -35,12 +41,16 @@ busPosition += forwardDir * busSpeed * deltaTime;
 
 ### 2.1 Camera Mode Switching
 
+> **Source**: [key_callback()](file:///d:/Academics/Graphics/Lab3_assignment/assignment.cpp#L947-L1018) — `GLFW_KEY_V` at line 952, `GLFW_KEY_K` at line 1019.
+
 | Key | Action |
 |-----|--------|
 | **V** | Cycle camera mode: Free → Chase → Interior → Free → ... |
 | **K** | Toggle driving mode (Chase Cam ↔ Free Cam) |
 
 ### 2.2 Camera Modes
+
+> **Source**: [getViewMatrix()](file:///d:/Academics/Graphics/Lab3_assignment/assignment.cpp#L206-L243) — computes view matrix based on mode.
 
 | Mode | Index | Description |
 |------|-------|-------------|
@@ -49,6 +59,8 @@ busPosition += forwardDir * busSpeed * deltaTime;
 | **Interior Camera** | 2 | Camera placed at driver seat position, looking forward |
 
 ### 2.3 Free Camera Movement
+
+> **Source**: [processInput()](file:///d:/Academics/Graphics/Lab3_assignment/assignment.cpp#L918-L927) — arrow key movement and orbit.
 
 | Key | Action |
 |-----|--------|
@@ -63,6 +75,8 @@ busPosition += forwardDir * busSpeed * deltaTime;
 
 ### 2.4 Mouse Controls
 
+> **Source**: [mouse_callback()](file:///d:/Academics/Graphics/Lab3_assignment/assignment.cpp#L826-L834), [scroll_callback()](file:///d:/Academics/Graphics/Lab3_assignment/assignment.cpp#L854-L858)
+
 | Input | Action |
 |-------|--------|
 | **Mouse Move** | Look around (yaw + pitch) — only when captured |
@@ -72,6 +86,8 @@ busPosition += forwardDir * busSpeed * deltaTime;
 ---
 
 ## 3. Texture Controls
+
+> **Source**: [key_callback()](file:///d:/Academics/Graphics/Lab3_assignment/assignment.cpp#L969-L997) — texture keys T, 8, 9, 0.
 
 | Key | Action | Cycles Through |
 |-----|--------|---------------|
@@ -83,6 +99,8 @@ busPosition += forwardDir * busSpeed * deltaTime;
 ---
 
 ## 4. Lighting Controls
+
+> **Source**: [key_callback()](file:///d:/Academics/Graphics/Lab3_assignment/assignment.cpp#L999-L1013) — keys 1–7.
 
 | Key | Action | Default |
 |-----|--------|---------|
@@ -98,6 +116,8 @@ busPosition += forwardDir * busSpeed * deltaTime;
 
 ## 5. Bus Feature Controls
 
+> **Source**: [key_callback()](file:///d:/Academics/Graphics/Lab3_assignment/assignment.cpp#L1015-L1028) — keys B, G, L, K.
+
 | Key | Action |
 |-----|--------|
 | **B** | Toggle front door (open/close animation) |
@@ -108,37 +128,41 @@ busPosition += forwardDir * busSpeed * deltaTime;
 
 ## 6. Utility
 
-| Key | Action |
-|-----|--------|
-| **Tab** | Print full status to console (camera, texture, lighting states) |
-| **Esc** | Close the application |
+| Key | Action | Source |
+|-----|--------|--------|
+| **Tab** | Print full status to console | [key_callback:L1031](file:///d:/Academics/Graphics/Lab3_assignment/assignment.cpp#L1031) calls [printStatus()](file:///d:/Academics/Graphics/Lab3_assignment/assignment.cpp#L354-L371) |
+| **Esc** | Close the application | [processInput:L864](file:///d:/Academics/Graphics/Lab3_assignment/assignment.cpp#L864) |
 
 ---
 
 ## Control Flow Diagram
 
+> All callbacks are registered at [assignment.cpp:L391–L394](file:///d:/Academics/Graphics/Lab3_assignment/assignment.cpp#L391-L394).
+
 ```
-┌─────────────────────────────────────────────────────┐
-│                    INPUT LOOP                        │
-│                                                     │
-│   processInput()     ← Continuous keys (every frame)│
-│   ├── WASD           → Bus driving                  │
-│   ├── Space/Ctrl     → Hover up/down                │
-│   ├── Arrow keys     → Free camera movement         │
-│   ├── Shift          → Speed boost                  │
-│   └── F (hold)       → Orbit camera                 │
-│                                                     │
-│   key_callback()     ← Single-press keys            │
-│   ├── V, K, M        → Camera / mouse               │
-│   ├── T, 8, 9, 0     → Texture settings             │
-│   ├── 1-7            → Lighting toggles              │
-│   ├── B, G, L        → Bus features                  │
-│   └── Tab            → Print status                  │
-│                                                     │
-│   mouse_callback()   ← Mouse movement               │
-│   └── dx, dy         → Yaw & Pitch                  │
-│                                                     │
-│   scroll_callback()  ← Mouse wheel                  │
-│   └── yoffset        → FOV zoom                     │
-└─────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────┐
+│                           INPUT LOOP                                    │
+│                                                                         │
+│  processInput() (L863)        ← Continuous keys (every frame)           │
+│  ├── WASD (L871–L883)         → Bus driving (speed, steering)           │
+│  ├── Space/Ctrl (L900–L913)   → Hover up/down (altitude)               │
+│  ├── Arrow keys (L922–L927)   → Free camera movement                   │
+│  ├── Shift (L920)             → Speed boost (2.5×)                      │
+│  └── F hold (L930–L939)       → Orbit around bus                        │
+│                                                                         │
+│  key_callback() (L947)        ← Single-press keys (discrete)           │
+│  ├── V (L952), K (L1019)      → Camera / driving mode                  │
+│  ├── M (L961)                 → Mouse capture toggle                    │
+│  ├── T (L970), 8 (L974)      → Texture mode / wrap mode                │
+│  ├── 9 (L979), 0 (L984)      → Filter mode / textures on-off           │
+│  ├── 1-7 (L999–L1013)        → Lighting toggles                        │
+│  ├── B (L1016), G (L1017)    → Bus door / fan                          │
+│  └── Tab (L1031)              → Print status                            │
+│                                                                         │
+│  mouse_callback() (L826)      ← Mouse movement                         │
+│  └── dx, dy → cameraYaw, cameraPitch                                   │
+│                                                                         │
+│  scroll_callback() (L854)     ← Mouse wheel                            │
+│  └── yoffset → cameraFOV (zoom 15°–90°)                                │
+└─────────────────────────────────────────────────────────────────────────┘
 ```

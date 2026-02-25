@@ -2,6 +2,8 @@
 
 This document covers mipmapping in detail: what it is, why it's needed, how mipmap levels are computed, all the OpenGL filtering functions, and how they're used in this project.
 
+> **Primary source files**: [assignment.cpp](file:///d:/Academics/Graphics/Lab3_assignment/assignment.cpp) — `loadTexture()` at [L251–L336](file:///d:/Academics/Graphics/Lab3_assignment/assignment.cpp#L251-L336), `updateSceneTextureParams()` at [L340–L352](file:///d:/Academics/Graphics/Lab3_assignment/assignment.cpp#L340-L352).
+
 ---
 
 ## Table of Contents
@@ -178,7 +180,10 @@ If `λ` falls between two integer levels (e.g., `λ = 2.7`), the behavior depend
 
 ### Automatic Generation (Used in This Project)
 
+> **Source**: [assignment.cpp:L318–L322](file:///d:/Academics/Graphics/Lab3_assignment/assignment.cpp#L318-L322) — inside `loadTexture()`.
+
 ```cpp
+// assignment.cpp:L318–L322 — inside loadTexture()
 // After uploading texture data
 glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0,
              GL_RGB, GL_UNSIGNED_BYTE, data);
@@ -207,22 +212,25 @@ This is useful when you want custom filtering (e.g., Gaussian, Lanczos) for each
 
 ### This project's implementation in `loadTexture()`:
 
+> **Source**: [loadTexture()](file:///d:/Academics/Graphics/Lab3_assignment/assignment.cpp#L251-L336) — full function in `assignment.cpp`, lines 251–336.
+
 ```cpp
+// assignment.cpp:L251–L336
 unsigned int loadTexture(const char* path, GLenum wrapMode, GLenum filterMode) {
-    // ... load image data ...
+    // ... load image data (L252–L282) ...
     
+    // Upload to GPU (L318–L321)
     glGenTextures(1, &textureID);
     glBindTexture(GL_TEXTURE_2D, textureID);
-    
-    // Upload base level (level 0)
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, outW, outH, 0,
                  GL_RGB, GL_UNSIGNED_BYTE, finalData);
     
-    // Auto-generate all mipmap levels from level 0
+    // Auto-generate all mipmap levels from level 0 (L322)
     glGenerateMipmap(GL_TEXTURE_2D);
     
-    // Set min filter to use mipmaps (CRITICAL — without this, mipmaps are ignored)
+    // Set min filter to use mipmaps — CRITICAL (L325)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    // Set mag filter per-texture (L326)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filterMode);
     
     return textureID;
@@ -316,39 +324,47 @@ When the texture is **enlarged** (viewed up close), only 2 options exist:
 
 ### Default Configuration
 
+> **Source**: [assignment.cpp:L325–L326](file:///d:/Academics/Graphics/Lab3_assignment/assignment.cpp#L325-L326) — inside `loadTexture()`.
+
 Every texture in this project uses:
 
 ```cpp
+// assignment.cpp:L325–L326 — inside loadTexture()
 glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);  // trilinear
 glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filterMode);               // per-texture
 ```
 
 ### Per-Texture Magnification Settings
 
-| Texture File | `filterMode` (Mag) | Design Rationale |
-|-------------|-------------------|------------------|
-| `floor.jpg` | `GL_LINEAR` | Smooth floor, natural look |
-| `carpet.jpg` | `GL_NEAREST` | Deliberate pixelated/retro aesthetics |
-| `fabric.jpg` | `GL_LINEAR` | Smooth fabric for seat upholstery |
-| `wall.jpg` | `GL_LINEAR` | Smooth brick/stone wall |
-| `dashboard.jpg` | `GL_NEAREST` | Retro dashboard gauges |
-| `busbody.jpg` | `GL_NEAREST` | Pixel-art style bus exterior |
-| `sphere.jpg` | `GL_LINEAR` | Smooth spherical mapping |
-| `cone.jpg` | `GL_NEAREST` | Intentional sharp texel edges |
-| `road.jpg` | `GL_LINEAR` | Smooth asphalt appearance |
-| `grass.jpg` | `GL_LINEAR` | Smooth grass field |
-| `container2.png` | `GL_LINEAR` | Smooth crate texture |
-| `emoji.png` | `GL_LINEAR` | Smooth emoji face |
+> **Source**: [assignment.cpp:L415–L428](file:///d:/Academics/Graphics/Lab3_assignment/assignment.cpp#L415-L428) — `loadTexture()` calls with filter parameter.
+
+| Texture File | `filterMode` (Mag) | Design Rationale | Loaded at |
+|-------------|-------------------|------------------|-----------|
+| `floor.jpg` | `GL_LINEAR` | Smooth floor, natural look | [L415](file:///d:/Academics/Graphics/Lab3_assignment/assignment.cpp#L415) |
+| `carpet.jpg` | `GL_NEAREST` | Deliberate pixelated/retro aesthetics | [L416](file:///d:/Academics/Graphics/Lab3_assignment/assignment.cpp#L416) |
+| `fabric.jpg` | `GL_LINEAR` | Smooth fabric for seat upholstery | [L417](file:///d:/Academics/Graphics/Lab3_assignment/assignment.cpp#L417) |
+| `wall.jpg` | `GL_LINEAR` | Smooth brick/stone wall | [L418](file:///d:/Academics/Graphics/Lab3_assignment/assignment.cpp#L418) |
+| `dashboard.jpg` | `GL_NEAREST` | Retro dashboard gauges | [L419](file:///d:/Academics/Graphics/Lab3_assignment/assignment.cpp#L419) |
+| `busbody.jpg` | `GL_NEAREST` | Pixel-art style bus exterior | [L420](file:///d:/Academics/Graphics/Lab3_assignment/assignment.cpp#L420) |
+| `sphere.jpg` | `GL_LINEAR` | Smooth spherical mapping | [L421](file:///d:/Academics/Graphics/Lab3_assignment/assignment.cpp#L421) |
+| `cone.jpg` | `GL_NEAREST` | Intentional sharp texel edges | [L422](file:///d:/Academics/Graphics/Lab3_assignment/assignment.cpp#L422) |
+| `road.jpg` | `GL_LINEAR` | Smooth asphalt appearance | [L425](file:///d:/Academics/Graphics/Lab3_assignment/assignment.cpp#L425) |
+| `grass.jpg` | `GL_LINEAR` | Smooth grass field | [L426](file:///d:/Academics/Graphics/Lab3_assignment/assignment.cpp#L426) |
+| `container2.png` | `GL_LINEAR` | Smooth crate texture | [L427](file:///d:/Academics/Graphics/Lab3_assignment/assignment.cpp#L427) |
+| `emoji.png` | `GL_LINEAR` | Smooth emoji face | [L428](file:///d:/Academics/Graphics/Lab3_assignment/assignment.cpp#L428) |
 
 ### Runtime Filter Switching
+
+> **Source**: [key_callback()](file:///d:/Academics/Graphics/Lab3_assignment/assignment.cpp#L979-L982) — key **9** handler, and [updateSceneTextureParams()](file:///d:/Academics/Graphics/Lab3_assignment/assignment.cpp#L340-L352).
 
 Press **9** to toggle magnification filter at runtime:
 
 ```cpp
+// assignment.cpp:L148–L150 — filter mode arrays
 GLenum filterModes[] = { GL_LINEAR, GL_NEAREST };
 const char* filterNames[] = { "GL_LINEAR", "GL_NEAREST" };
 
-// In key_callback():
+// assignment.cpp:L979–L982 — in key_callback()
 case GLFW_KEY_9:
     currentFilterIndex = (currentFilterIndex + 1) % NUM_FILTER_MODES;
     updateSceneTextureParams();
@@ -358,6 +374,7 @@ case GLFW_KEY_9:
 The `updateSceneTextureParams()` function updates the sphere and cone textures:
 
 ```cpp
+// assignment.cpp:L340–L352
 void updateSceneTextureParams() {
     GLenum wrap = wrapModes[currentWrapIndex];
     GLenum filter = filterModes[currentFilterIndex];
@@ -376,6 +393,8 @@ void updateSceneTextureParams() {
 ---
 
 ## 7. Wrapping Modes and Mipmapping Interaction
+
+> **Source**: Wrap mode arrays at [assignment.cpp:L141–L147](file:///d:/Academics/Graphics/Lab3_assignment/assignment.cpp#L141-L147). Wrap parameters set in [loadTexture()](file:///d:/Academics/Graphics/Lab3_assignment/assignment.cpp#L323-L324).
 
 Wrapping modes affect how mipmaps are generated at texture borders:
 
@@ -406,30 +425,33 @@ Wrapping modes affect how mipmaps are generated at texture borders:
 
 ## 8. Texture Parameter Functions Reference
 
+> **Source**: All functions used in [loadTexture()](file:///d:/Academics/Graphics/Lab3_assignment/assignment.cpp#L251-L336) and [updateSceneTextureParams()](file:///d:/Academics/Graphics/Lab3_assignment/assignment.cpp#L340-L352). Texture cleanup at [assignment.cpp:L817–L818](file:///d:/Academics/Graphics/Lab3_assignment/assignment.cpp#L817-L818).
+
 ### Complete list of OpenGL texture functions used:
 
-| Function | Purpose | Parameters |
+| Function | Purpose | Where Used |
 |----------|---------|------------|
-| `glGenTextures(n, &id)` | Create `n` texture objects | Returns texture IDs |
-| `glBindTexture(target, id)` | Make texture active for subsequent operations | `GL_TEXTURE_2D`, texture ID |
-| `glTexImage2D(...)` | Upload pixel data to GPU | target, level, format, w, h, border, format, type, data |
-| `glGenerateMipmap(target)` | Auto-create all mipmap levels | `GL_TEXTURE_2D` |
-| `glTexParameteri(target, pname, param)` | Set integer texture parameter | See parameters below |
-| `glActiveTexture(unit)` | Select which texture unit to use | `GL_TEXTURE0` through `GL_TEXTURE15` |
-| `glDeleteTextures(n, &id)` | Free GPU texture memory | Number of textures, ID pointer |
+| `glGenTextures(n, &id)` | Create `n` texture objects | [loadTexture():L318](file:///d:/Academics/Graphics/Lab3_assignment/assignment.cpp#L318) |
+| `glBindTexture(target, id)` | Make texture active for subsequent operations | [loadTexture():L320](file:///d:/Academics/Graphics/Lab3_assignment/assignment.cpp#L320), render loop |
+| `glTexImage2D(...)` | Upload pixel data to GPU | [loadTexture():L321](file:///d:/Academics/Graphics/Lab3_assignment/assignment.cpp#L321) |
+| `glGenerateMipmap(target)` | Auto-create all mipmap levels | [loadTexture():L322](file:///d:/Academics/Graphics/Lab3_assignment/assignment.cpp#L322) |
+| `glTexParameteri(target, pname, param)` | Set integer texture parameter | [loadTexture():L323–L326](file:///d:/Academics/Graphics/Lab3_assignment/assignment.cpp#L323-L326), [updateSceneTextureParams():L346–L349](file:///d:/Academics/Graphics/Lab3_assignment/assignment.cpp#L346-L349) |
+| `glActiveTexture(unit)` | Select which texture unit to use | Render loop, e.g. [L609](file:///d:/Academics/Graphics/Lab3_assignment/assignment.cpp#L609) |
+| `glDeleteTextures(n, &id)` | Free GPU texture memory | [main() cleanup:L817](file:///d:/Academics/Graphics/Lab3_assignment/assignment.cpp#L817) |
 
 ### `glTexParameteri` parameters:
 
-| `pname` | Valid Values | Default |
-|---------|-------------|---------|
-| `GL_TEXTURE_WRAP_S` | `GL_REPEAT`, `GL_CLAMP_TO_EDGE`, `GL_MIRRORED_REPEAT` | `GL_REPEAT` |
-| `GL_TEXTURE_WRAP_T` | Same as WRAP_S | `GL_REPEAT` |
-| `GL_TEXTURE_MIN_FILTER` | Any of the 6 min-filter modes | `GL_NEAREST_MIPMAP_LINEAR` |
-| `GL_TEXTURE_MAG_FILTER` | `GL_LINEAR`, `GL_NEAREST` | `GL_LINEAR` |
+| `pname` | Valid Values | Default | Set at |
+|---------|-------------|---------|--------|
+| `GL_TEXTURE_WRAP_S` | `GL_REPEAT`, `GL_CLAMP_TO_EDGE`, `GL_MIRRORED_REPEAT` | `GL_REPEAT` | [L323](file:///d:/Academics/Graphics/Lab3_assignment/assignment.cpp#L323) |
+| `GL_TEXTURE_WRAP_T` | Same as WRAP_S | `GL_REPEAT` | [L324](file:///d:/Academics/Graphics/Lab3_assignment/assignment.cpp#L324) |
+| `GL_TEXTURE_MIN_FILTER` | Any of the 6 min-filter modes | `GL_NEAREST_MIPMAP_LINEAR` | [L325](file:///d:/Academics/Graphics/Lab3_assignment/assignment.cpp#L325) |
+| `GL_TEXTURE_MAG_FILTER` | `GL_LINEAR`, `GL_NEAREST` | `GL_LINEAR` | [L326](file:///d:/Academics/Graphics/Lab3_assignment/assignment.cpp#L326) |
 
 ### `glTexImage2D` parameters explained:
 
 ```cpp
+// assignment.cpp:L321 — inside loadTexture()
 glTexImage2D(
     GL_TEXTURE_2D,     // target: 2D texture
     0,                 // mipmap level (0 = base)
@@ -487,6 +509,8 @@ glTexImage2D(
 ```
 
 ### This project's choice:
+
+> **Source**: [assignment.cpp:L325](file:///d:/Academics/Graphics/Lab3_assignment/assignment.cpp#L325) — hardcoded in `loadTexture()`.
 
 **`GL_LINEAR_MIPMAP_LINEAR` (trilinear) for all minification** — chosen because:
 1. The scene has objects at various distances (buildings far vs. near)
