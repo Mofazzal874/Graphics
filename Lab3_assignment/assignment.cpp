@@ -589,47 +589,62 @@ int main()
         bus.draw(ourShader, busTransform);
         bus.jetEngineOn = savedJetOn;
 
-        // ==================== SIMPLE CITY ENVIRONMENT ====================
-        // Fixed road + buildings along both sides, no looping
+        // ==================== CITY ENVIRONMENT ====================
+        // The road runs along the X-axis. Bus starts at (0,0,0) facing -X.
+        // We generate road segments and buildings relative to the bus X position.
 
-        // --- ROAD (single long strip, fragment-blended texture) ---
-        {
-            if (texRoad != 0) {
-                ourShader.setInt("textureMode", 3);   // blended Phong — avoids extreme stretch
-                glActiveTexture(GL_TEXTURE0);
-                glBindTexture(GL_TEXTURE_2D, texRoad);
-                ourShader.setInt("textureSampler", 0);
-            }
-            glm::mat4 model = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -0.05f, 0.0f));
-            model = glm::scale(model, glm::vec3(200.0f, 0.1f, ROAD_WIDTH));
-            bus.cube.draw(ourShader, model, glm::vec3(0.08f, 0.08f, 0.08f));
-            ourShader.setInt("textureMode", 0);
-        }
+        float busX = busPosition.x;
+        // Snap to nearest segment boundary
+        float segStart = floor(busX / ROAD_SEGMENT_LEN) * ROAD_SEGMENT_LEN;
 
-        // --- WHITE DASHED CENTER DIVIDER ---
-        {
-            for (int d = -40; d < 40; d++) {
-                float dx = d * 2.5f;
-                glm::mat4 model = glm::translate(glm::mat4(1.0f), glm::vec3(dx, 0.01f, 0.0f));
-                model = glm::scale(model, glm::vec3(1.5f, 0.02f, 0.15f));
-                bus.cube.draw(ourShader, model, glm::vec3(1.0f, 1.0f, 1.0f));
-            }
-        }
+        for (int seg = -VISIBLE_SEGMENTS / 2; seg <= VISIBLE_SEGMENTS / 2; seg++) {
+            float segX = segStart + seg * ROAD_SEGMENT_LEN;
 
-        // --- GRASS (both sides, fragment-blended) ---
-        for (int side = -1; side <= 1; side += 2) {
-            float grassZ = side * (ROAD_WIDTH * 0.5f + GRASS_WIDTH * 0.5f);
-            if (texGrass != 0) {
-                ourShader.setInt("textureMode", 3);
-                glActiveTexture(GL_TEXTURE0);
-                glBindTexture(GL_TEXTURE_2D, texGrass);
-                ourShader.setInt("textureSampler", 0);
+            // --- ROAD SEGMENT ---
+            {
+                ourShader.setInt("textureMode", 0);
+                if (texRoad != 0) {
+                    ourShader.setInt("textureMode", 1);
+                    glActiveTexture(GL_TEXTURE0);
+                    glBindTexture(GL_TEXTURE_2D, texRoad);
+                    ourShader.setInt("textureSampler", 0);
+                }
+                glm::mat4 model = glm::translate(glm::mat4(1.0f),
+                    glm::vec3(segX + ROAD_SEGMENT_LEN * 0.5f, -0.05f, 0.0f));
+                model = glm::scale(model, glm::vec3(ROAD_SEGMENT_LEN, 0.1f, ROAD_WIDTH));
+                bus.cube.draw(ourShader, model, glm::vec3(0.08f, 0.08f, 0.08f));
+                ourShader.setInt("textureMode", 0);
             }
-            glm::mat4 model = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -0.1f, grassZ));
-            model = glm::scale(model, glm::vec3(200.0f, 0.1f, GRASS_WIDTH));
-            bus.cube.draw(ourShader, model, glm::vec3(0.15f, 0.45f, 0.1f));
-            ourShader.setInt("textureMode", 0);
-        }
+
+            // --- WHITE DASHED CENTER DIVIDER ---
+            {
+                int numDashes = 4;
+                float dashLen = ROAD_SEGMENT_LEN / (numDashes * 2.0f);
+                for (int d = 0; d < numDashes; d++) {
+                    float dx = segX + d * (dashLen * 2.0f) + dashLen * 0.5f;
+                    glm::mat4 model = glm::translate(glm::mat4(1.0f),
+                        glm::vec3(dx, 0.01f, 0.0f));
+                    model = glm::scale(model, glm::vec3(dashLen * 0.8f, 0.02f, 0.15f));
+                    bus.cube.draw(ourShader, model, glm::vec3(1.0f, 1.0f, 1.0f));
+                }
+            }
+
+            // --- GRASS STRIPS (both sides) ---
+            for (int side = -1; side <= 1; side += 2) {
+                float grassZ = side * (ROAD_WIDTH * 0.5f + GRASS_WIDTH * 0.5f);
+                if (texGrass != 0) {
+                    ourShader.setInt("textureMode", 3);
+                    glActiveTexture(GL_TEXTURE0);
+                    glBindTexture(GL_TEXTURE_2D, texGrass);
+                    ourShader.setInt("textureSampler", 0);
+                }
+                glm::mat4 model = glm::translate(glm::mat4(1.0f),
+                    glm::vec3(segX + ROAD_SEGMENT_LEN * 0.5f, -0.1f, grassZ));
+                model = glm::scale(model, glm::vec3(ROAD_SEGMENT_LEN, 0.1f, GRASS_WIDTH));
+                bus.cube.draw(ourShader, model, glm::vec3(0.15f, 0.45f, 0.1f));
+                ourShader.setInt("textureMode", 0);
+            }
+        } // end segment loop
 
         // ==================== BUILDINGS ====================
         // Each building type appears twice (one on each side or at different positions)
