@@ -5,6 +5,7 @@ in vec3 FragPos;
 in vec3 Normal;
 in vec2 TexCoord;
 in vec3 VertexLightColor;
+in vec3 WorldPos;
 
 // ==================== LIGHT STRUCTS ====================
 struct DirLight {
@@ -66,8 +67,14 @@ uniform float alpha;
 
 // ==================== TEXTURE UNIFORMS ====================
 uniform sampler2D textureSampler;
-// textureMode: 0=none, 1=pure texture, 2=vertex-blended (Gouraud), 3=fragment-blended (Phong)
+uniform sampler2D textureSampler2;  // Second texture for blending
+// textureMode: 0=none, 1=pure texture, 2=vertex-blended (Gouraud), 3=fragment-blended (Phong), 4=multi-texture blend
 uniform int textureMode;
+
+// Blending parameters for textureMode 4
+uniform float blendWidth;   // Width of transition zone
+uniform float blendEdge;    // World-space coordinate of blend center
+uniform int blendAxis;      // 0=X, 1=Y, 2=Z
 
 // ==================== LIGHT CALCULATION FUNCTIONS ====================
 
@@ -161,20 +168,55 @@ void main() {
     }
     
     if (textureMode == 3) {
-        // Mode 3: Texture × fragment-computed (Phong) lighting
+        // Mode 3: Blended texture × fragment-computed (Phong) lighting
         texColor = texture(textureSampler, TexCoord).rgb;
-        // Compute per-fragment Phong with objectColor
+        // Blend texture color with object color (70% texture, 30% object color)
+        vec3 blendedMat = mix(objectColor, texColor, 0.7);
+        // Compute per-fragment Phong with blended material
         vec3 phongResult = vec3(0.0);
         if (dirLightOn)
-            phongResult += CalcDirLight(dirLight, norm, viewDir, objectColor);
+            phongResult += CalcDirLight(dirLight, norm, viewDir, blendedMat);
         if (pointLightsOn) {
             for (int i = 0; i < NR_POINT_LIGHTS; i++)
-                phongResult += CalcPointLight(pointLights[i], norm, FragPos, viewDir, objectColor);
+                phongResult += CalcPointLight(pointLights[i], norm, FragPos, viewDir, blendedMat);
         }
         if (spotLightOn)
-            phongResult += CalcSpotLight(spotLight, norm, FragPos, viewDir, objectColor);
-        vec3 result = texColor * clamp(phongResult, 0.0, 1.0);
-        result = clamp(result, 0.0, 1.0);
+            phongResult += CalcSpotLight(spotLight, norm, FragPos, viewDir, blendedMat);
+        vec3 result = clamp(phongResult, 0.0, 1.0);
+        FragColor = vec4(result, alpha);
+        return;
+    }
+    
+    if (textureMode == 4) {
+        // Mode 4: Multi-texture blend with smooth transition
+        vec3 tex1Color = texture(textureSampler, TexCoord).rgb;
+        vec3 tex2Color = texture(textureSampler2, TexCoord).rgb;
+        
+        // Get world-space coordinate along the blend axis
+        float coord = WorldPos.x;
+        if (blendAxis == 1) coord = WorldPos.y;
+        if (blendAxis == 2) coord = WorldPos.z;
+        
+        // Smooth transition using smoothstep
+        float absCoord = abs(coord);
+        float blendFactor = smoothstep(blendEdge - blendWidth, blendEdge + blendWidth, absCoord);
+        
+        // Blend from tex1 (road, near center) to tex2 (grass, far from center)
+        vec3 blendedTex = mix(tex1Color, tex2Color, blendFactor);
+        // Also blend with object color for realism
+        vec3 blendedMat = mix(objectColor, blendedTex, 0.75);
+        
+        // Compute per-fragment Phong with blended material
+        vec3 phongResult = vec3(0.0);
+        if (dirLightOn)
+            phongResult += CalcDirLight(dirLight, norm, viewDir, blendedMat);
+        if (pointLightsOn) {
+            for (int i = 0; i < NR_POINT_LIGHTS; i++)
+                phongResult += CalcPointLight(pointLights[i], norm, FragPos, viewDir, blendedMat);
+        }
+        if (spotLightOn)
+            phongResult += CalcSpotLight(spotLight, norm, FragPos, viewDir, blendedMat);
+        vec3 result = clamp(phongResult, 0.0, 1.0);
         FragColor = vec4(result, alpha);
         return;
     }

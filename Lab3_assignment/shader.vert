@@ -7,13 +7,17 @@ out vec3 FragPos;
 out vec3 Normal;
 out vec2 TexCoord;
 out vec3 VertexLightColor;
+out vec3 WorldPos;
 
 uniform mat4 model;
 uniform mat4 view;
 uniform mat4 projection;
 
-// Texture mode: 0=none, 1=pure texture, 2=vertex-blended, 3=fragment-blended
+// Texture mode: 0=none, 1=pure texture, 2=vertex-blended, 3=fragment-blended, 4=multi-texture blend
 uniform int textureMode;
+
+// UV tiling scale (default 1,1 = no tiling)
+uniform vec2 texScale;
 
 // --- Light uniforms duplicated for vertex (Gouraud) lighting ---
 uniform vec3 objectColor;
@@ -108,8 +112,9 @@ vec3 CalcSpotLightV(SpotLight light, vec3 normal, vec3 fragPos, vec3 viewDir) {
 
 void main() {
     FragPos = vec3(model * vec4(aPos, 1.0));
+    WorldPos = FragPos;
     Normal = mat3(transpose(inverse(model))) * aNormal;
-    TexCoord = aTexCoord;
+    TexCoord = aTexCoord * texScale;
     gl_Position = projection * view * vec4(FragPos, 1.0);
 
     // Compute Gouraud lighting only when textureMode == 2

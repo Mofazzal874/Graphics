@@ -147,7 +147,7 @@ GLenum filterModes[] = { GL_LINEAR, GL_NEAREST };
 const char* filterNames[] = { "GL_LINEAR", "GL_NEAREST" };
 const int NUM_FILTER_MODES = 2;
 
-const char* textureModeNames[] = { "OFF", "PURE TEXTURE", "VERTEX-BLENDED (Gouraud)", "FRAGMENT-BLENDED (Phong)" };
+const char* textureModeNames[] = { "OFF", "PURE TEXTURE", "VERTEX-BLENDED (Gouraud)", "FRAGMENT-BLENDED (Phong)", "MULTI-TEXTURE BLEND" };
 
 // ============================================================================
 // CUSTOM lookAt
@@ -508,6 +508,12 @@ int main()
         ourShader.use();
         ourShader.setInt("textureMode", 0);
 
+        // Default texture uniforms
+        ourShader.setVec2("texScale", glm::vec2(1.0f, 1.0f));
+        ourShader.setFloat("blendWidth", 2.0f);
+        ourShader.setFloat("blendEdge", 4.0f);
+        ourShader.setInt("blendAxis", 2);
+
         // ==================== LIGHT SETUP ====================
         ourShader.setVec3("dirLight.direction", -0.2f, -1.0f, -0.3f);
         ourShader.setVec3("dirLight.ambient",  0.15f, 0.15f, 0.15f);
@@ -605,7 +611,9 @@ int main()
             {
                 ourShader.setInt("textureMode", 0);
                 if (texRoad != 0) {
-                    ourShader.setInt("textureMode", 1);
+                    ourShader.setInt("textureMode", 3);
+                    // Tile road texture proportionally: aspect-preserving repeat
+                    ourShader.setVec2("texScale", glm::vec2(ROAD_SEGMENT_LEN / ROAD_WIDTH, 1.0f));
                     glActiveTexture(GL_TEXTURE0);
                     glBindTexture(GL_TEXTURE_2D, texRoad);
                     ourShader.setInt("textureSampler", 0);
@@ -615,6 +623,7 @@ int main()
                 model = glm::scale(model, glm::vec3(ROAD_SEGMENT_LEN, 0.1f, ROAD_WIDTH));
                 bus.cube.draw(ourShader, model, glm::vec3(0.08f, 0.08f, 0.08f));
                 ourShader.setInt("textureMode", 0);
+                ourShader.setVec2("texScale", glm::vec2(1.0f, 1.0f));
             }
 
             // --- WHITE DASHED CENTER DIVIDER ---
@@ -630,11 +639,29 @@ int main()
                 }
             }
 
-            // --- GRASS STRIPS (both sides) ---
+            // --- GRASS STRIPS (both sides) with road-grass blending ---
             for (int side = -1; side <= 1; side += 2) {
                 float grassZ = side * (ROAD_WIDTH * 0.5f + GRASS_WIDTH * 0.5f);
-                if (texGrass != 0) {
+                if (texGrass != 0 && texRoad != 0) {
+                    // Use multi-texture blend mode for smooth road-grass transition
+                    ourShader.setInt("textureMode", 4);
+                    // Tile grass texture for natural look
+                    ourShader.setVec2("texScale", glm::vec2(ROAD_SEGMENT_LEN / 5.0f, GRASS_WIDTH / 5.0f));
+                    // Blend parameters: transition at road edge along Z axis
+                    ourShader.setFloat("blendEdge", ROAD_WIDTH * 0.5f);
+                    ourShader.setFloat("blendWidth", 2.5f);
+                    ourShader.setInt("blendAxis", 2);  // Z axis
+                    // Slot 0: road texture (near road center)
+                    glActiveTexture(GL_TEXTURE0);
+                    glBindTexture(GL_TEXTURE_2D, texRoad);
+                    ourShader.setInt("textureSampler", 0);
+                    // Slot 1: grass texture (far from road center)
+                    glActiveTexture(GL_TEXTURE1);
+                    glBindTexture(GL_TEXTURE_2D, texGrass);
+                    ourShader.setInt("textureSampler2", 1);
+                } else if (texGrass != 0) {
                     ourShader.setInt("textureMode", 3);
+                    ourShader.setVec2("texScale", glm::vec2(ROAD_SEGMENT_LEN / 5.0f, GRASS_WIDTH / 5.0f));
                     glActiveTexture(GL_TEXTURE0);
                     glBindTexture(GL_TEXTURE_2D, texGrass);
                     ourShader.setInt("textureSampler", 0);
@@ -644,6 +671,7 @@ int main()
                 model = glm::scale(model, glm::vec3(ROAD_SEGMENT_LEN, 0.1f, GRASS_WIDTH));
                 bus.cube.draw(ourShader, model, glm::vec3(0.15f, 0.45f, 0.1f));
                 ourShader.setInt("textureMode", 0);
+                ourShader.setVec2("texScale", glm::vec2(1.0f, 1.0f));
             }
 
             // --- BUILDINGS (both sides) ---
@@ -660,13 +688,13 @@ int main()
                     int colorIdx = (int)(cityRand(bSeed, 4) * NUM_PALETTE_COLORS) % NUM_PALETTE_COLORS;
                     glm::vec3 bColor = buildingPalette[colorIdx];
 
-                    // Choose texture for this building
+                    // Choose texture for this building (all use mode 3 for fragment-blended Phong)
                     int texChoice = (int)(cityRand(bSeed, 10) * 4.0f);
                     unsigned int bTex = 0;
-                    int bTexMode = 0;
-                    if (texChoice == 0 && texContainer != 0) { bTex = texContainer; bTexMode = 1; }
+                    int bTexMode = 3;  // Fragment-blended by default
+                    if (texChoice == 0 && texContainer != 0) { bTex = texContainer; bTexMode = 3; }
                     else if (texChoice == 1 && texWall != 0) { bTex = texWall; bTexMode = 3; }
-                    else if (texChoice == 2 && texEmoji != 0) { bTex = texEmoji; bTexMode = 1; }
+                    else if (texChoice == 2 && texEmoji != 0) { bTex = texEmoji; bTexMode = 3; }
                     // texChoice == 3 → pure color (no texture)
 
                     if (bType == 0) {
@@ -923,7 +951,7 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
 
         // --- TEXTURE ---
         case GLFW_KEY_T:
-            sceneTextureMode = (sceneTextureMode + 1) % 4;
+            sceneTextureMode = (sceneTextureMode + 1) % 5;
             std::cout << "Texture Mode: " << textureModeNames[sceneTextureMode] << std::endl;
             break;
         case GLFW_KEY_8:
