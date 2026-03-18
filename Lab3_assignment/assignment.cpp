@@ -95,6 +95,9 @@ unsigned int texSphere = 0, texCone = 0;
 unsigned int texRoad = 0, texGrass = 0;
 unsigned int texContainer = 0, texEmoji = 0;
 
+// New textures for cylinders, cones, and buildings
+unsigned int texStoneWall = 0, texRoofTile = 0, texBrickWall = 0;
+
 // Skybox
 unsigned int skyboxVAO = 0, skyboxVBO = 0;
 unsigned int cubemapTexture = 0;
@@ -614,6 +617,11 @@ int main()
     texContainer = loadTexture("textures/container2.png", GL_REPEAT,         GL_LINEAR);
     texEmoji     = loadTexture("textures/emoji.png",     GL_CLAMP_TO_EDGE,   GL_LINEAR);
 
+    // New textures for cone/cylinder structures and buildings
+    texStoneWall = loadTexture("textures/stone_wall.jpg",                  GL_REPEAT, GL_LINEAR);
+    texRoofTile  = loadTexture("textures/roof_tile.jpg",                   GL_REPEAT, GL_LINEAR);
+    texBrickWall = loadTexture("textures/Seamless brick wall texture.jpg", GL_REPEAT, GL_LINEAR);
+
     // Skybox cubemap
     cubemapTexture = loadCubemapFromFaces();
     std::cout << "========================" << std::endl;
@@ -900,13 +908,15 @@ int main()
                     glm::vec3 bColor = buildingPalette[colorIdx];
 
                     // Choose texture for this building (all use mode 3 for fragment-blended Phong)
-                    int texChoice = (int)(cityRand(bSeed, 10) * 4.0f);
+                    int texChoice = (int)(cityRand(bSeed, 10) * 6.0f);
                     unsigned int bTex = 0;
                     int bTexMode = 3;  // Fragment-blended by default
                     if (texChoice == 0 && texContainer != 0) { bTex = texContainer; bTexMode = 3; }
                     else if (texChoice == 1 && texWall != 0) { bTex = texWall; bTexMode = 3; }
                     else if (texChoice == 2 && texEmoji != 0) { bTex = texEmoji; bTexMode = 3; }
-                    // texChoice == 3 → pure color (no texture)
+                    else if (texChoice == 3 && texStoneWall != 0) { bTex = texStoneWall; bTexMode = 3; }
+                    else if (texChoice == 4 && texBrickWall != 0) { bTex = texBrickWall; bTexMode = 3; }
+                    // texChoice == 5 → pure color (no texture)
 
                     if (bType == 0) {
                         // ---- STACKED CUBES ----
@@ -920,6 +930,9 @@ int main()
 
                             if (bTex != 0) {
                                 ourShader.setInt("textureMode", bTexMode);
+                                // Scale UV to tile proportionally: avoid stretching
+                                float maxDim = std::max({cw, ch, cd});
+                                ourShader.setVec2("texScale", glm::vec2(cw / maxDim, ch / maxDim));
                                 glActiveTexture(GL_TEXTURE0);
                                 glBindTexture(GL_TEXTURE_2D, bTex);
                                 ourShader.setInt("textureSampler", 0);
@@ -930,6 +943,7 @@ int main()
                             model = glm::scale(model, glm::vec3(cw, ch, cd));
                             bus.cube.draw(ourShader, model, buildingPalette[cc]);
                             ourShader.setInt("textureMode", 0);
+                            ourShader.setVec2("texScale", glm::vec2(1.0f, 1.0f));
 
                             yOffset += ch;
                         }
@@ -942,6 +956,9 @@ int main()
 
                         if (bTex != 0) {
                             ourShader.setInt("textureMode", bTexMode);
+                            // Scale UV to tile proportionally: avoid stretching
+                            float maxDim = std::max({bw, bh, bd});
+                            ourShader.setVec2("texScale", glm::vec2(bw / maxDim, bh / maxDim));
                             glActiveTexture(GL_TEXTURE0);
                             glBindTexture(GL_TEXTURE_2D, bTex);
                             ourShader.setInt("textureSampler", 0);
@@ -952,6 +969,7 @@ int main()
                         model = glm::scale(model, glm::vec3(bw, bh, bd));
                         bus.cube.draw(ourShader, model, bColor);
                         ourShader.setInt("textureMode", 0);
+                        ourShader.setVec2("texScale", glm::vec2(1.0f, 1.0f));
 
                         // Windows (small dark cubes on front face)
                         int wRows = (int)(bh / 1.5f);
@@ -975,12 +993,20 @@ int main()
                         float towerH = 3.0f + cityRand(bSeed, 6) * 8.0f;
                         float coneH = 1.5f + cityRand(bSeed, 7) * 2.0f;
 
-                        // Cylinder body
-                        if (bTex != 0) {
-                            ourShader.setInt("textureMode", bTexMode);
-                            glActiveTexture(GL_TEXTURE0);
-                            glBindTexture(GL_TEXTURE_2D, bTex);
-                            ourShader.setInt("textureSampler", 0);
+                        // Cylinder body — use stone_wall or brick_wall texture
+                        {
+                            // Alternate between stone and brick based on building seed
+                            unsigned int cylTex = (bSeed % 2 == 0 && texStoneWall != 0) ? texStoneWall :
+                                                  (texBrickWall != 0 ? texBrickWall : bTex);
+                            if (cylTex != 0) {
+                                ourShader.setInt("textureMode", 3);
+                                // Tile texture proportionally around cylinder circumference vs height
+                                float circumference = 2.0f * 3.14159f * radius;
+                                ourShader.setVec2("texScale", glm::vec2(circumference / 2.0f, towerH / 2.0f));
+                                glActiveTexture(GL_TEXTURE0);
+                                glBindTexture(GL_TEXTURE_2D, cylTex);
+                                ourShader.setInt("textureSampler", 0);
+                            }
                         }
 
                         glm::mat4 model = glm::translate(glm::mat4(1.0f), 
@@ -988,13 +1014,25 @@ int main()
                         model = glm::scale(model, glm::vec3(radius, towerH, radius));
                         bus.cylinder.draw(ourShader, model, bColor);
                         ourShader.setInt("textureMode", 0);
+                        ourShader.setVec2("texScale", glm::vec2(1.0f, 1.0f));
 
-                        // Cone roof (base matches cylinder top exactly)
+                        // Cone roof — use roof_tile texture
                         int roofColor = (colorIdx + 3) % NUM_PALETTE_COLORS;
+                        if (texRoofTile != 0) {
+                            ourShader.setInt("textureMode", 3);
+                            // Tile roof texture: circumference around cone, height up the slope
+                            float circumference = 2.0f * 3.14159f * radius;
+                            ourShader.setVec2("texScale", glm::vec2(circumference / 2.0f, coneH / 2.0f));
+                            glActiveTexture(GL_TEXTURE0);
+                            glBindTexture(GL_TEXTURE_2D, texRoofTile);
+                            ourShader.setInt("textureSampler", 0);
+                        }
                         model = glm::translate(glm::mat4(1.0f), 
                             glm::vec3(bx, towerH + coneH * 0.5f, bz));
                         model = glm::scale(model, glm::vec3(radius, coneH, radius));
                         sceneCone.draw(ourShader, model, buildingPalette[roofColor]);
+                        ourShader.setInt("textureMode", 0);
+                        ourShader.setVec2("texScale", glm::vec2(1.0f, 1.0f));
                     }
                 }
             }
@@ -1028,7 +1066,8 @@ int main()
     sceneSphere.cleanup();
     sceneCone.cleanup();
     if (skyboxVAO) { glDeleteVertexArrays(1, &skyboxVAO); glDeleteBuffers(1, &skyboxVBO); }
-    unsigned int allTex[] = { texFloor, texCarpet, texFabric, texWall, texDashboard, texBusBody, texSphere, texCone };
+    unsigned int allTex[] = { texFloor, texCarpet, texFabric, texWall, texDashboard, texBusBody, texSphere, texCone,
+                              texStoneWall, texRoofTile, texBrickWall };
     for (auto t : allTex) { if (t) glDeleteTextures(1, &t); }
     if (cubemapTexture) glDeleteTextures(1, &cubemapTexture);
     glfwTerminate();
