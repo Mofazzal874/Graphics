@@ -95,6 +95,10 @@ unsigned int texSphere = 0, texCone = 0;
 unsigned int texRoad = 0, texGrass = 0;
 unsigned int texContainer = 0, texEmoji = 0;
 
+// Skybox
+unsigned int skyboxVAO = 0, skyboxVBO = 0;
+unsigned int cubemapTexture = 0;
+
 Sphere sceneSphere;
 Cone sceneCone;
 
@@ -335,7 +339,135 @@ unsigned int loadTexture(const char* path, GLenum wrapMode, GLenum filterMode) {
     return textureID;
 }
 
+// ============================================================================
+// CUBEMAP LOADING FROM HORIZONTAL CROSS LAYOUT
+// ============================================================================
+// sky.png cross layout (4 cols × 3 rows):
+//   Col0   Col1   Col2   Col3
+//   ---    Top    ---    ---     Row 0
+//   Left   Front  Right  Back   Row 1
+//   ---    Bottom ---    ---     Row 2
+unsigned int loadCubemapFromCross(const char* path) {
+    std::cout << "  Loading cubemap cross: " << path << "..." << std::flush;
+    
+    int width = 0, height = 0, nrChannels = 0;
+    stbi_set_flip_vertically_on_load(false);  // Cubemaps don't flip
+    unsigned char* data = stbi_load(path, &width, &height, &nrChannels, 3);
+    if (!data) {
+        std::cout << " [FAIL] " << stbi_failure_reason() << std::endl;
+        return 0;
+    }
+    std::cout << " " << width << "x" << height << "..." << std::flush;
+    
+    int faceW = width / 4;
+    int faceH = height / 3;
+    // Use the smaller dimension for square faces
+    int faceSize = (faceW < faceH) ? faceW : faceH;
+    
+    // Face positions in the cross (col, row)
+    // OpenGL cubemap face order: +X, -X, +Y, -Y, +Z, -Z
+    // Mapping: Right=+X, Left=-X, Top=+Y, Bottom=-Y, Front=+Z, Back=-Z
+    struct FaceInfo { int col; int row; };
+    FaceInfo faces[6] = {
+        {2, 1},  // GL_TEXTURE_CUBE_MAP_POSITIVE_X = Right
+        {0, 1},  // GL_TEXTURE_CUBE_MAP_NEGATIVE_X = Left
+        {1, 0},  // GL_TEXTURE_CUBE_MAP_POSITIVE_Y = Top
+        {1, 2},  // GL_TEXTURE_CUBE_MAP_NEGATIVE_Y = Bottom
+        {1, 1},  // GL_TEXTURE_CUBE_MAP_POSITIVE_Z = Front
+        {3, 1},  // GL_TEXTURE_CUBE_MAP_NEGATIVE_Z = Back
+    };
+    
+    unsigned int textureID;
+    glGenTextures(1, &textureID);
+    glBindTexture(GL_TEXTURE_CUBE_MAP, textureID);
+    
+    // Allocate temporary buffer for one face (square, resampled)
+    unsigned char* faceData = (unsigned char*)malloc(faceSize * faceSize * 3);
+    
+    for (int i = 0; i < 6; i++) {
+        int srcX = faces[i].col * faceW;
+        int srcY = faces[i].row * faceH;
+        
+        // Extract and resample face to square
+        for (int y = 0; y < faceSize; y++) {
+            for (int x = 0; x < faceSize; x++) {
+                // Map to source coordinates
+                int sx = srcX + (int)(x * (float)faceW / faceSize);
+                int sy = srcY + (int)(y * (float)faceH / faceSize);
+                if (sx >= width) sx = width - 1;
+                if (sy >= height) sy = height - 1;
+                
+                int srcIdx = (sy * width + sx) * 3;
+                int dstIdx = (y * faceSize + x) * 3;
+                faceData[dstIdx]     = data[srcIdx];
+                faceData[dstIdx + 1] = data[srcIdx + 1];
+                faceData[dstIdx + 2] = data[srcIdx + 2];
+            }
+        }
+        
+        glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, GL_RGB,
+                     faceSize, faceSize, 0, GL_RGB, GL_UNSIGNED_BYTE, faceData);
+    }
+    
+    free(faceData);
+    stbi_image_free(data);
+    
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+    
+    std::cout << " [OK] face=" << faceSize << "x" << faceSize << std::endl;
+    stbi_set_flip_vertically_on_load(true);  // Restore for other textures
+    return textureID;
+}
 
+// ============================================================================
+// CUBEMAP LOADING FROM 6 INDIVIDUAL FACE IMAGES
+// ============================================================================
+unsigned int loadCubemapFromFaces() {
+    std::cout << "  Loading cubemap from individual faces..." << std::flush;
+
+    // OpenGL cubemap face order: +X, -X, +Y, -Y, +Z, -Z
+    const char* facePaths[6] = {
+        "textures/skybox/right.jpg",   // GL_TEXTURE_CUBE_MAP_POSITIVE_X
+        "textures/skybox/left.jpg",    // GL_TEXTURE_CUBE_MAP_NEGATIVE_X
+        "textures/skybox/top.jpg",     // GL_TEXTURE_CUBE_MAP_POSITIVE_Y
+        "textures/skybox/bottom.jpg",  // GL_TEXTURE_CUBE_MAP_NEGATIVE_Y
+        "textures/skybox/front.jpg",   // GL_TEXTURE_CUBE_MAP_POSITIVE_Z
+        "textures/skybox/back.jpg"     // GL_TEXTURE_CUBE_MAP_NEGATIVE_Z
+    };
+
+    unsigned int textureID;
+    glGenTextures(1, &textureID);
+    glBindTexture(GL_TEXTURE_CUBE_MAP, textureID);
+
+    stbi_set_flip_vertically_on_load(false);  // Cubemaps must NOT be flipped
+
+    for (int i = 0; i < 6; i++) {
+        int width = 0, height = 0, nrChannels = 0;
+        unsigned char* data = stbi_load(facePaths[i], &width, &height, &nrChannels, 3);
+        if (data) {
+            glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, GL_RGB,
+                         width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
+            std::cout << " [" << facePaths[i] << " " << width << "x" << height << " OK]" << std::flush;
+            stbi_image_free(data);
+        } else {
+            std::cout << " [FAIL: " << facePaths[i] << " - " << stbi_failure_reason() << "]" << std::flush;
+        }
+    }
+
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+
+    std::cout << " [DONE]" << std::endl;
+    stbi_set_flip_vertically_on_load(true);  // Restore for other textures
+    return textureID;
+}
 
 void updateSceneTextureParams() {
     GLenum wrap = wrapModes[currentWrapIndex];
@@ -405,10 +537,65 @@ int main()
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
     Shader ourShader("shader.vert", "shader.frag");
+    Shader skyboxShader("skybox.vert", "skybox.frag");
     bus.init();
     bus.jetEngineOn = true;  // Flame always visible
     sceneSphere.init(30, 36);
     sceneCone.init(36);
+
+    // ==================== SKYBOX CUBE VAO ====================
+    float skyboxVertices[] = {
+        // positions          
+        -1.0f,  1.0f, -1.0f,
+        -1.0f, -1.0f, -1.0f,
+         1.0f, -1.0f, -1.0f,
+         1.0f, -1.0f, -1.0f,
+         1.0f,  1.0f, -1.0f,
+        -1.0f,  1.0f, -1.0f,
+
+        -1.0f, -1.0f,  1.0f,
+        -1.0f, -1.0f, -1.0f,
+        -1.0f,  1.0f, -1.0f,
+        -1.0f,  1.0f, -1.0f,
+        -1.0f,  1.0f,  1.0f,
+        -1.0f, -1.0f,  1.0f,
+
+         1.0f, -1.0f, -1.0f,
+         1.0f, -1.0f,  1.0f,
+         1.0f,  1.0f,  1.0f,
+         1.0f,  1.0f,  1.0f,
+         1.0f,  1.0f, -1.0f,
+         1.0f, -1.0f, -1.0f,
+
+        -1.0f, -1.0f,  1.0f,
+        -1.0f,  1.0f,  1.0f,
+         1.0f,  1.0f,  1.0f,
+         1.0f,  1.0f,  1.0f,
+         1.0f, -1.0f,  1.0f,
+        -1.0f, -1.0f,  1.0f,
+
+        -1.0f,  1.0f, -1.0f,
+         1.0f,  1.0f, -1.0f,
+         1.0f,  1.0f,  1.0f,
+         1.0f,  1.0f,  1.0f,
+        -1.0f,  1.0f,  1.0f,
+        -1.0f,  1.0f, -1.0f,
+
+        -1.0f, -1.0f, -1.0f,
+        -1.0f, -1.0f,  1.0f,
+         1.0f, -1.0f, -1.0f,
+         1.0f, -1.0f, -1.0f,
+        -1.0f, -1.0f,  1.0f,
+         1.0f, -1.0f,  1.0f
+    };
+    glGenVertexArrays(1, &skyboxVAO);
+    glGenBuffers(1, &skyboxVBO);
+    glBindVertexArray(skyboxVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, skyboxVBO);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(skyboxVertices), &skyboxVertices, GL_STATIC_DRAW);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(0);
+    glBindVertexArray(0);
 
     // ==================== LOAD TEXTURES ====================
     std::cout << "\n=== Loading Textures ===" << std::endl;
@@ -426,6 +613,9 @@ int main()
     texGrass     = loadTexture("textures/grass.jpg",     GL_REPEAT,          GL_LINEAR);
     texContainer = loadTexture("textures/container2.png", GL_REPEAT,         GL_LINEAR);
     texEmoji     = loadTexture("textures/emoji.png",     GL_CLAMP_TO_EDGE,   GL_LINEAR);
+
+    // Skybox cubemap
+    cubemapTexture = loadCubemapFromFaces();
     std::cout << "========================" << std::endl;
 
     // Assign to bus
@@ -778,17 +968,36 @@ int main()
                         bus.cylinder.draw(ourShader, model, bColor);
                         ourShader.setInt("textureMode", 0);
 
-                        // Cone roof
+                        // Cone roof (base matches cylinder top exactly)
                         int roofColor = (colorIdx + 3) % NUM_PALETTE_COLORS;
                         model = glm::translate(glm::mat4(1.0f), 
-                            glm::vec3(bx, towerH, bz));
-                        model = glm::scale(model, glm::vec3(radius * 1.3f, coneH, radius * 1.3f));
+                            glm::vec3(bx, towerH + coneH * 0.5f, bz));
+                        model = glm::scale(model, glm::vec3(radius, coneH, radius));
                         sceneCone.draw(ourShader, model, buildingPalette[roofColor]);
                     }
                 }
             }
         }
         ourShader.setInt("textureMode", 0);
+
+        // ==================== DRAW SKYBOX ====================
+        if (cubemapTexture != 0) {
+            glDepthFunc(GL_LEQUAL);  // Skybox passes depth test at z=1.0
+            skyboxShader.use();
+            // Remove translation from view matrix so skybox stays centered on camera
+            glm::mat4 skyboxView = glm::mat4(glm::mat3(view));
+            skyboxShader.setMat4("view", skyboxView);
+            skyboxShader.setMat4("projection", projection);
+            // Bind cubemap
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_CUBE_MAP, cubemapTexture);
+            skyboxShader.setInt("skybox", 0);
+            // Draw skybox cube
+            glBindVertexArray(skyboxVAO);
+            glDrawArrays(GL_TRIANGLES, 0, 36);
+            glBindVertexArray(0);
+            glDepthFunc(GL_LESS);  // Restore default
+        }
 
         glfwSwapBuffers(window);
         glfwPollEvents();
@@ -797,8 +1006,10 @@ int main()
     bus.cleanup();
     sceneSphere.cleanup();
     sceneCone.cleanup();
+    if (skyboxVAO) { glDeleteVertexArrays(1, &skyboxVAO); glDeleteBuffers(1, &skyboxVBO); }
     unsigned int allTex[] = { texFloor, texCarpet, texFabric, texWall, texDashboard, texBusBody, texSphere, texCone };
     for (auto t : allTex) { if (t) glDeleteTextures(1, &t); }
+    if (cubemapTexture) glDeleteTextures(1, &cubemapTexture);
     glfwTerminate();
     return 0;
 }
