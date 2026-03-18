@@ -790,8 +790,29 @@ int main()
         // We generate road segments and buildings relative to the bus X position.
 
         float busX = busPosition.x;
+        float busZ = busPosition.z;
         // Snap to nearest segment boundary
         float segStart = floor(busX / ROAD_SEGMENT_LEN) * ROAD_SEGMENT_LEN;
+
+        // ==================== LARGE GROUND PLANE ====================
+        // Covers the entire visible area so the skybox lake is never seen.
+        // Follows the bus position so it always extends past the horizon.
+        {
+            const float GROUND_SIZE = 1000.0f;
+            if (texGrass != 0) {
+                ourShader.setInt("textureMode", 3);
+                ourShader.setVec2("texScale", glm::vec2(GROUND_SIZE / 5.0f, GROUND_SIZE / 5.0f));
+                glActiveTexture(GL_TEXTURE0);
+                glBindTexture(GL_TEXTURE_2D, texGrass);
+                ourShader.setInt("textureSampler", 0);
+            }
+            glm::mat4 groundModel = glm::translate(glm::mat4(1.0f),
+                glm::vec3(busX, -0.25f, busZ));
+            groundModel = glm::scale(groundModel, glm::vec3(GROUND_SIZE, 0.1f, GROUND_SIZE));
+            bus.cube.draw(ourShader, groundModel, glm::vec3(0.12f, 0.38f, 0.08f));
+            ourShader.setInt("textureMode", 0);
+            ourShader.setVec2("texScale", glm::vec2(1.0f, 1.0f));
+        }
 
         for (int seg = -VISIBLE_SEGMENTS / 2; seg <= VISIBLE_SEGMENTS / 2; seg++) {
             float segX = segStart + seg * ROAD_SEGMENT_LEN;
