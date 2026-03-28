@@ -105,6 +105,45 @@ unsigned int cubemapTexture = 0;
 Sphere sceneSphere;
 Cone sceneCone;
 
+// Bezier/Spline surface of revolution objects
+BezierSurface bezierVase;         // Decorative vase along the road
+BezierSurface bezierWaterTower;   // Water tower (large bulb on top)
+SplineSurface splineLamp;         // Street lamp post with smooth curves
+SplineSurface splineBollard;      // Rounded bollard/post
+RuledSurface  ruledCanopy;        // Canopy/awning between two curves
+
+// Ring checkpoints the hover vehicle flies through
+Torus ringCheckpoint;
+
+// Eiffel Tower components (built from Bezier curves + ruled surfaces)
+BezierSurface eiffelLeg;          // One curved leg (Bezier revolution - tapered)
+SplineSurface eiffelUpperShaft;   // Upper narrow shaft (spline revolution)
+BezierSurface eiffelTopBulb;      // Top observation dome (Bezier revolution)
+RuledSurface  eiffelArch[4];      // Decorative arches between legs (ruled surfaces)
+RuledSurface  eiffelPlatform;     // Observation platform (ruled surface)
+
+// ============================================================================
+// COLLISION SYSTEM - AABB-based
+// ============================================================================
+struct AABB {
+    glm::vec3 minPt;
+    glm::vec3 maxPt;
+};
+
+std::vector<AABB> collisionBoxes; // filled each frame from visible buildings + objects
+
+// Ring checkpoint positions (fixed world positions along the road)
+struct RingCheckpoint {
+    glm::vec3 position;
+    float yaw;       // rotation around Y
+    float radius;    // ring outer radius for collision pass-through
+    bool passed;
+};
+std::vector<RingCheckpoint> ringPositions;
+
+// Tower position
+glm::vec3 towerPosition = glm::vec3(50.0f, 0.0f, -25.0f);
+
 int sceneTextureMode = 1;
 
 // ============================================================================
@@ -179,6 +218,8 @@ void mouse_callback(GLFWwindow* window, double xpos, double ypos);
 void scroll_callback(GLFWwindow* window, double xoffset, double yoffset);
 void processInput(GLFWwindow* window);
 void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods);
+void addBuildingCollision(glm::vec3 center, glm::vec3 halfExtents);
+bool checkBusCollision(glm::vec3 newPos);
 
 // ============================================================================
 // CAMERA HELPERS
@@ -546,6 +587,173 @@ int main()
     sceneSphere.init(30, 36);
     sceneCone.init(36);
 
+    // ==================== BEZIER/SPLINE CURVE OBJECTS ====================
+    // Vase profile: wide base, narrow neck, flared top (Bezier surface of revolution)
+    {
+        std::vector<glm::vec2> vaseProfile = {
+            glm::vec2(0.8f, 0.0f),   // base
+            glm::vec2(1.0f, 0.3f),   // wide belly
+            glm::vec2(0.3f, 0.7f),   // narrow neck
+            glm::vec2(0.6f, 1.0f)    // flared lip
+        };
+        bezierVase.init(vaseProfile, 20, 24);
+    }
+
+    // Water tower profile: thin stem, big bulb on top (Bezier)
+    {
+        std::vector<glm::vec2> towerProfile = {
+            glm::vec2(0.3f, 0.0f),   // narrow base
+            glm::vec2(0.3f, 0.5f),   // stem
+            glm::vec2(1.2f, 0.6f),   // bulge out
+            glm::vec2(1.0f, 0.85f),  // round top
+            glm::vec2(0.0f, 1.0f)    // apex
+        };
+        bezierWaterTower.init(towerProfile, 25, 30);
+    }
+
+    // Street lamp profile (Catmull-Rom spline - smooth through all points)
+    {
+        std::vector<glm::vec2> lampProfile = {
+            glm::vec2(0.3f, 0.0f),   // base
+            glm::vec2(0.15f, 0.1f),  // taper
+            glm::vec2(0.08f, 0.5f),  // thin pole
+            glm::vec2(0.08f, 0.85f), // pole continues
+            glm::vec2(0.25f, 0.92f), // lamp housing bulge
+            glm::vec2(0.2f, 1.0f)    // lamp top
+        };
+        splineLamp.init(lampProfile, 8, 20);
+    }
+
+    // Bollard (short rounded post) - Spline
+    {
+        std::vector<glm::vec2> bollardProfile = {
+            glm::vec2(0.4f, 0.0f),
+            glm::vec2(0.5f, 0.2f),
+            glm::vec2(0.45f, 0.5f),
+            glm::vec2(0.3f, 0.8f),
+            glm::vec2(0.0f, 1.0f)
+        };
+        splineBollard.init(bollardProfile, 6, 16);
+    }
+
+    // Ruled surface canopy (between two curved rails)
+    {
+        std::vector<glm::vec3> topCurve = {
+            glm::vec3(-3.0f, 4.0f, 0.0f),
+            glm::vec3(-1.0f, 5.0f, 0.0f),
+            glm::vec3(1.0f, 5.0f, 0.0f),
+            glm::vec3(3.0f, 4.0f, 0.0f)
+        };
+        std::vector<glm::vec3> bottomCurve = {
+            glm::vec3(-3.0f, 4.0f, 4.0f),
+            glm::vec3(-1.0f, 4.5f, 4.0f),
+            glm::vec3(1.0f, 4.5f, 4.0f),
+            glm::vec3(3.0f, 4.0f, 4.0f)
+        };
+        ruledCanopy.init(topCurve, bottomCurve, 20, 8);
+    }
+
+    // Ring checkpoint (large torus for flying through)
+    // mainRadius=6 gives 12-unit diameter hole, tubeRadius=0.6 makes it clearly visible
+    ringCheckpoint.init(6.0f, 0.6f, 36, 18);
+
+    // Eiffel Tower construction from curves
+    {
+        // Leg profile: wide curved base that tapers inward (Bezier revolution, quarter-profile)
+        std::vector<glm::vec2> legProfile = {
+            glm::vec2(1.2f, 0.0f),    // wide foot
+            glm::vec2(1.0f, 1.0f),    // lower curve
+            glm::vec2(0.5f, 3.0f),    // mid taper
+            glm::vec2(0.3f, 5.0f)     // top of leg (meets shaft)
+        };
+        eiffelLeg.init(legProfile, 15, 12);
+
+        // Upper shaft: narrow column from 1st platform to top (Spline revolution)
+        std::vector<glm::vec2> shaftProfile = {
+            glm::vec2(0.8f, 0.0f),    // base (at 1st platform)
+            glm::vec2(0.6f, 2.0f),    // slight taper
+            glm::vec2(0.45f, 5.0f),   // 2nd platform level
+            glm::vec2(0.3f, 8.0f),    // narrowing
+            glm::vec2(0.2f, 11.0f),   // near top
+            glm::vec2(0.15f, 13.0f),  // spire base
+            glm::vec2(0.05f, 15.0f)   // spire tip
+        };
+        eiffelUpperShaft.init(shaftProfile, 8, 20);
+
+        // Top observation bulb (small dome at top)
+        std::vector<glm::vec2> topProfile = {
+            glm::vec2(0.0f, 0.0f),
+            glm::vec2(0.4f, 0.1f),
+            glm::vec2(0.35f, 0.4f),
+            glm::vec2(0.0f, 0.6f)
+        };
+        eiffelTopBulb.init(topProfile, 10, 16);
+
+        // Arches: curved ruled surfaces connecting each pair of legs
+        // Arch 0: front arch (between front-left and front-right legs)
+        float archH = 4.0f;   // arch height
+        float legSpread = 6.0f; // distance of legs from center at base
+        float legTopSpread = 1.5f; // where legs meet the shaft
+
+        // 4 arches, one per face (front, back, left, right)
+        // Each arch is a ruled surface between a top rail and bottom curved rail
+        for (int a = 0; a < 4; a++) {
+            float angle = a * 90.0f;
+            float rad = glm::radians(angle);
+            float cosA = cos(rad), sinA = sin(rad);
+
+            // Bottom curve: arcs from one leg base across to the other
+            std::vector<glm::vec3> bottomCurve = {
+                glm::vec3(-legSpread * sinA + legSpread * cosA, 0.0f,
+                           legSpread * cosA + legSpread * sinA),
+                glm::vec3(-legSpread * 0.3f * sinA, archH * 0.5f,
+                           legSpread * 0.3f * cosA),
+                glm::vec3(legSpread * sinA + legSpread * cosA, 0.0f,
+                          -legSpread * cosA + legSpread * sinA)
+            };
+
+            // Top rail: flat line at the 1st platform level
+            std::vector<glm::vec3> topCurve = {
+                glm::vec3(-legTopSpread * sinA + legTopSpread * cosA, archH + 1.0f,
+                           legTopSpread * cosA + legTopSpread * sinA),
+                glm::vec3(0.0f, archH + 1.5f, 0.0f),
+                glm::vec3(legTopSpread * sinA + legTopSpread * cosA, archH + 1.0f,
+                          -legTopSpread * cosA + legTopSpread * sinA)
+            };
+            eiffelArch[a].init(topCurve, bottomCurve, 15, 5);
+        }
+
+        // Platform: flat ruled surface at the 1st observation deck
+        {
+            std::vector<glm::vec3> platTop = {
+                glm::vec3(-3.0f, 0.0f, -3.0f),
+                glm::vec3(0.0f, 0.2f, -3.0f),
+                glm::vec3(3.0f, 0.0f, -3.0f)
+            };
+            std::vector<glm::vec3> platBot = {
+                glm::vec3(-3.0f, 0.0f, 3.0f),
+                glm::vec3(0.0f, 0.2f, 3.0f),
+                glm::vec3(3.0f, 0.0f, 3.0f)
+            };
+            eiffelPlatform.init(platTop, platBot, 10, 10);
+        }
+    }
+
+    // Setup ring checkpoint positions along the road
+    // Bus starts at origin facing -X, so rings go along negative X
+    {
+        ringPositions.clear();
+        for (int i = 0; i < 10; i++) {
+            RingCheckpoint rc;
+            // Place rings ahead of bus (-X direction), at heights 8-14 units (clearly in the sky)
+            rc.position = glm::vec3(-40.0f - i * 50.0f, 10.0f + 4.0f * sin(i * 0.9f), 0.0f);
+            rc.yaw = 0.0f;
+            rc.radius = 6.0f;
+            rc.passed = false;
+            ringPositions.push_back(rc);
+        }
+    }
+
     // ==================== SKYBOX CUBE VAO ====================
     float skyboxVertices[] = {
         // positions          
@@ -695,6 +903,9 @@ int main()
         processInput(window);
         bus.updateFan(deltaTime, fanSpinning);
         bus.updateJetFlame(deltaTime);
+
+        // Clear collision boxes - rebuilt each frame from visible objects
+        collisionBoxes.clear();
 
         int fbWidth, fbHeight;
         glfwGetFramebufferSize(window, &fbWidth, &fbHeight);
@@ -945,6 +1156,9 @@ int main()
                             ourShader.setInt("textureMode", 0);
                             ourShader.setVec2("texScale", glm::vec2(1.0f, 1.0f));
 
+                            // Add collision box for this cube
+                            addBuildingCollision(glm::vec3(bx, yOffset + ch * 0.5f, bz),
+                                                 glm::vec3(cw * 0.5f, ch * 0.5f, cd * 0.5f));
                             yOffset += ch;
                         }
                     }
@@ -970,6 +1184,10 @@ int main()
                         bus.cube.draw(ourShader, model, bColor);
                         ourShader.setInt("textureMode", 0);
                         ourShader.setVec2("texScale", glm::vec2(1.0f, 1.0f));
+
+                        // Collision for tall building
+                        addBuildingCollision(glm::vec3(bx, bh * 0.5f, bz),
+                                             glm::vec3(bw * 0.5f, bh * 0.5f, bd * 0.5f));
 
                         // Windows (small dark cubes on front face)
                         int wRows = (int)(bh / 1.5f);
@@ -1016,6 +1234,10 @@ int main()
                         ourShader.setInt("textureMode", 0);
                         ourShader.setVec2("texScale", glm::vec2(1.0f, 1.0f));
 
+                        // Collision for cone-topped tower (use cylinder bounding box)
+                        addBuildingCollision(glm::vec3(bx, (towerH + coneH) * 0.5f, bz),
+                                             glm::vec3(radius, (towerH + coneH) * 0.5f, radius));
+
                         // Cone roof — use roof_tile texture
                         int roofColor = (colorIdx + 3) % NUM_PALETTE_COLORS;
                         if (texRoofTile != 0) {
@@ -1038,6 +1260,267 @@ int main()
             }
         }
         ourShader.setInt("textureMode", 0);
+
+        // ==================== CURVE OBJECTS: BEZIER / SPLINE / RULED ====================
+        {
+            float time = (float)glfwGetTime();
+
+            // --- BEZIER VASES along the road (decorative, on sidewalk) ---
+            for (int i = -5; i <= 15; i++) {
+                float vaseX = i * 25.0f;
+                for (int side = -1; side <= 1; side += 2) {
+                    float vaseZ = side * (ROAD_WIDTH * 0.5f + 1.5f);
+                    glm::mat4 model = glm::translate(glm::mat4(1.0f),
+                        glm::vec3(vaseX, 0.0f, vaseZ));
+                    model = glm::scale(model, glm::vec3(1.2f, 2.0f, 1.2f));
+                    bezierVase.draw(ourShader, model, glm::vec3(0.7f, 0.25f, 0.1f));
+
+                    // Collision for vase
+                    addBuildingCollision(glm::vec3(vaseX, 1.0f, vaseZ),
+                                         glm::vec3(0.7f, 1.0f, 0.7f));
+                }
+            }
+
+            // --- BEZIER WATER TOWERS (a few scattered) ---
+            {
+                glm::vec3 waterTowerPositions[] = {
+                    glm::vec3(80.0f, 0.0f, -20.0f),
+                    glm::vec3(200.0f, 0.0f, 22.0f),
+                    glm::vec3(-60.0f, 0.0f, -18.0f)
+                };
+                for (auto& wtp : waterTowerPositions) {
+                    glm::mat4 model = glm::translate(glm::mat4(1.0f), wtp);
+                    model = glm::scale(model, glm::vec3(3.0f, 10.0f, 3.0f));
+                    bezierWaterTower.draw(ourShader, model, glm::vec3(0.5f, 0.5f, 0.6f));
+
+                    addBuildingCollision(wtp + glm::vec3(0, 5, 0),
+                                         glm::vec3(2.0f, 5.0f, 2.0f));
+                }
+            }
+
+            // --- SPLINE STREET LAMPS along road ---
+            for (int i = -5; i <= 15; i++) {
+                float lampX = i * 20.0f + 10.0f;
+                for (int side = -1; side <= 1; side += 2) {
+                    float lampZ = side * (ROAD_WIDTH * 0.5f + 0.8f);
+                    glm::mat4 model = glm::translate(glm::mat4(1.0f),
+                        glm::vec3(lampX, 0.0f, lampZ));
+                    model = glm::scale(model, glm::vec3(0.6f, 5.0f, 0.6f));
+                    splineLamp.draw(ourShader, model, glm::vec3(0.3f, 0.3f, 0.35f));
+
+                    // Lamp light glow (emissive sphere on top)
+                    if (emissiveLightOn) {
+                        ourShader.setBool("isEmissive", true);
+                        glm::mat4 glowModel = glm::translate(glm::mat4(1.0f),
+                            glm::vec3(lampX, 4.8f, lampZ));
+                        glowModel = glm::scale(glowModel, glm::vec3(0.4f, 0.4f, 0.4f));
+                        sceneSphere.draw(ourShader, glowModel, glm::vec3(1.0f, 0.9f, 0.5f));
+                        ourShader.setBool("isEmissive", false);
+                    }
+
+                    addBuildingCollision(glm::vec3(lampX, 2.5f, lampZ),
+                                         glm::vec3(0.3f, 2.5f, 0.3f));
+                }
+            }
+
+            // --- SPLINE BOLLARDS at road intersections ---
+            for (int i = 0; i < 8; i++) {
+                float bx = i * 50.0f;
+                for (int side = -1; side <= 1; side += 2) {
+                    float bz = side * (ROAD_WIDTH * 0.5f + 0.3f);
+                    glm::mat4 model = glm::translate(glm::mat4(1.0f),
+                        glm::vec3(bx, 0.0f, bz));
+                    model = glm::scale(model, glm::vec3(0.5f, 1.0f, 0.5f));
+                    splineBollard.draw(ourShader, model, glm::vec3(0.8f, 0.7f, 0.1f));
+
+                    addBuildingCollision(glm::vec3(bx, 0.5f, bz),
+                                         glm::vec3(0.3f, 0.5f, 0.3f));
+                }
+            }
+
+            // --- RULED SURFACE CANOPIES (bus stop shelters) ---
+            {
+                glm::vec3 canopyPositions[] = {
+                    glm::vec3(40.0f, 0.0f, ROAD_WIDTH * 0.5f + 3.0f),
+                    glm::vec3(120.0f, 0.0f, -(ROAD_WIDTH * 0.5f + 3.0f)),
+                    glm::vec3(240.0f, 0.0f, ROAD_WIDTH * 0.5f + 3.0f)
+                };
+                for (auto& cp : canopyPositions) {
+                    glm::mat4 model = glm::translate(glm::mat4(1.0f), cp);
+                    ruledCanopy.draw(ourShader, model, glm::vec3(0.6f, 0.65f, 0.7f));
+
+                    // Support pillars for canopy (cubes)
+                    for (int p = -1; p <= 1; p += 2) {
+                        glm::mat4 pillar = glm::translate(glm::mat4(1.0f),
+                            cp + glm::vec3(p * 2.8f, 2.0f, 2.0f));
+                        pillar = glm::scale(pillar, glm::vec3(0.15f, 4.0f, 0.15f));
+                        bus.cube.draw(ourShader, pillar, glm::vec3(0.4f, 0.4f, 0.45f));
+
+                        addBuildingCollision(cp + glm::vec3(p * 2.8f, 2.0f, 2.0f),
+                                             glm::vec3(0.15f, 2.0f, 0.15f));
+                    }
+                }
+            }
+
+            // --- EIFFEL TOWER (built from Bezier legs, Spline shaft, Ruled arches) ---
+            {
+                glm::vec3 tp = towerPosition;
+                glm::vec3 eiffelColor(0.45f, 0.38f, 0.30f); // Dark iron/bronze
+                float legSpread = 6.0f;
+                float legHeight = 5.0f;   // matches leg profile max Y
+                float platformY = 5.5f;   // 1st observation deck
+                float shaftScale = 2.5f;
+
+                // Apply stone texture to all Eiffel parts
+                if (texStoneWall != 0) {
+                    ourShader.setInt("textureMode", 3);
+                    ourShader.setVec2("texScale", glm::vec2(2.0f, 4.0f));
+                    glActiveTexture(GL_TEXTURE0);
+                    glBindTexture(GL_TEXTURE_2D, texStoneWall);
+                    ourShader.setInt("textureSampler", 0);
+                }
+
+                // 4 curved legs at corners (Bezier surface of revolution)
+                float legOffsets[4][2] = {
+                    {-legSpread, -legSpread},
+                    { legSpread, -legSpread},
+                    { legSpread,  legSpread},
+                    {-legSpread,  legSpread}
+                };
+                float legAngles[4] = { 45.0f, -45.0f, -135.0f, 135.0f };
+
+                for (int l = 0; l < 4; l++) {
+                    glm::mat4 model = glm::translate(glm::mat4(1.0f),
+                        tp + glm::vec3(legOffsets[l][0], 0.0f, legOffsets[l][1]));
+                    // Tilt each leg inward toward center
+                    float tiltAngle = 15.0f;
+                    float tiltRad = glm::radians(legAngles[l]);
+                    model = glm::rotate(model, glm::radians(tiltAngle) * cos(tiltRad), glm::vec3(0, 0, 1));
+                    model = glm::rotate(model, glm::radians(tiltAngle) * sin(tiltRad), glm::vec3(1, 0, 0));
+                    model = glm::scale(model, glm::vec3(1.5f, legHeight, 1.5f));
+                    eiffelLeg.draw(ourShader, model, eiffelColor);
+
+                    // Collision for each leg
+                    addBuildingCollision(
+                        tp + glm::vec3(legOffsets[l][0], legHeight * 0.5f, legOffsets[l][1]),
+                        glm::vec3(1.5f, legHeight * 0.5f, 1.5f));
+                }
+
+                // 4 decorative arches between legs (Ruled surfaces)
+                for (int a = 0; a < 4; a++) {
+                    glm::mat4 model = glm::translate(glm::mat4(1.0f), tp);
+                    eiffelArch[a].draw(ourShader, model, glm::vec3(0.5f, 0.42f, 0.35f));
+                }
+
+                // 1st observation platform (Ruled surface - flat deck)
+                {
+                    glm::mat4 model = glm::translate(glm::mat4(1.0f),
+                        tp + glm::vec3(0.0f, platformY, 0.0f));
+                    model = glm::scale(model, glm::vec3(1.5f, 1.0f, 1.5f));
+                    eiffelPlatform.draw(ourShader, model, glm::vec3(0.4f, 0.35f, 0.28f));
+                }
+
+                // Platform railing (thin cubes around edge)
+                for (int s = 0; s < 4; s++) {
+                    float angle = s * 90.0f;
+                    float r = glm::radians(angle);
+                    glm::vec3 railPos = tp + glm::vec3(cos(r) * 4.2f, platformY + 0.5f, sin(r) * 4.2f);
+                    glm::mat4 railing = glm::translate(glm::mat4(1.0f), railPos);
+                    railing = glm::rotate(railing, r, glm::vec3(0, 1, 0));
+                    railing = glm::scale(railing, glm::vec3(8.0f, 0.3f, 0.1f));
+                    bus.cube.draw(ourShader, railing, glm::vec3(0.35f, 0.3f, 0.25f));
+                }
+
+                // Upper shaft (Spline surface of revolution)
+                {
+                    glm::mat4 model = glm::translate(glm::mat4(1.0f),
+                        tp + glm::vec3(0.0f, platformY, 0.0f));
+                    model = glm::scale(model, glm::vec3(shaftScale, shaftScale, shaftScale));
+                    eiffelUpperShaft.draw(ourShader, model, eiffelColor);
+                }
+
+                // 2nd observation deck (smaller platform)
+                {
+                    float deck2Y = platformY + 5.0f * shaftScale;
+                    glm::mat4 deck2 = glm::translate(glm::mat4(1.0f),
+                        tp + glm::vec3(0.0f, deck2Y, 0.0f));
+                    deck2 = glm::scale(deck2, glm::vec3(2.5f, 0.15f, 2.5f));
+                    bus.cube.draw(ourShader, deck2, glm::vec3(0.4f, 0.35f, 0.28f));
+                }
+
+                // Top observation bulb (Bezier revolution)
+                {
+                    float topY = platformY + 14.0f * shaftScale;
+                    glm::mat4 model = glm::translate(glm::mat4(1.0f),
+                        tp + glm::vec3(0.0f, topY, 0.0f));
+                    model = glm::scale(model, glm::vec3(1.5f, 2.0f, 1.5f));
+                    eiffelTopBulb.draw(ourShader, model, glm::vec3(0.5f, 0.45f, 0.35f));
+                }
+
+                ourShader.setInt("textureMode", 0);
+                ourShader.setVec2("texScale", glm::vec2(1.0f, 1.0f));
+
+                // Central collision for the whole tower
+                float totalHeight = platformY + 15.0f * shaftScale;
+                addBuildingCollision(tp + glm::vec3(0, totalHeight * 0.5f, 0),
+                                     glm::vec3(2.0f, totalHeight * 0.5f, 2.0f));
+
+                // Beacon light on top
+                if (emissiveLightOn) {
+                    ourShader.setBool("isEmissive", true);
+                    float beacon = 0.5f + 0.5f * sin(time * 3.0f);
+                    float topY = platformY + 15.0f * shaftScale + 1.0f;
+                    glm::mat4 beaconModel = glm::translate(glm::mat4(1.0f),
+                        tp + glm::vec3(0.0f, topY, 0.0f));
+                    beaconModel = glm::scale(beaconModel, glm::vec3(1.0f, 1.0f, 1.0f));
+                    sceneSphere.draw(ourShader, beaconModel,
+                        glm::vec3(1.0f, 0.3f, 0.1f) * beacon);
+                    ourShader.setBool("isEmissive", false);
+                }
+            }
+
+            // --- RING CHECKPOINTS (torus rings to fly through) ---
+            for (size_t i = 0; i < ringPositions.size(); i++) {
+                auto& ring = ringPositions[i];
+
+                // Gentle bobbing animation
+                float bobY = sin(time * 1.5f + i * 0.8f) * 0.5f;
+                glm::vec3 ringPos = ring.position + glm::vec3(0.0f, bobY, 0.0f);
+
+                glm::mat4 model = glm::translate(glm::mat4(1.0f), ringPos);
+                // Rotate ring to face along X-axis (perpendicular to road)
+                model = glm::rotate(model, glm::radians(90.0f), glm::vec3(0, 0, 1));
+
+                // Color: green if passed, yellow/orange if not
+                glm::vec3 ringColor;
+                if (ring.passed) {
+                    ringColor = glm::vec3(0.1f, 0.9f, 0.2f);
+                } else {
+                    float pulse = 0.7f + 0.3f * sin(time * 4.0f + i);
+                    ringColor = glm::vec3(1.0f, 0.7f, 0.0f) * pulse;
+                }
+
+                // Draw with emissive glow
+                ourShader.setBool("isEmissive", true);
+                ourShader.setFloat("alpha", 0.85f);
+                ringCheckpoint.draw(ourShader, model, ringColor);
+                ourShader.setFloat("alpha", 1.0f);
+                ourShader.setBool("isEmissive", false);
+
+                // Check if bus passes through this ring
+                if (!ring.passed) {
+                    glm::vec3 busCenter = busPosition;
+                    busCenter.y += HOVER_HEIGHT + bus.hoverBobOffset + busAltitude;
+                    float distXZ = fabs(busCenter.x - ringPos.x); // ring faces along X
+                    float distYZ = sqrt((busCenter.y - ringPos.y) * (busCenter.y - ringPos.y) +
+                                        (busCenter.z - ringPos.z) * (busCenter.z - ringPos.z));
+                    if (distXZ < 2.0f && distYZ < ring.radius * 0.8f) {
+                        ring.passed = true;
+                        std::cout << ">> RING " << (i + 1) << " PASSED! <<" << std::endl;
+                    }
+                }
+            }
+        }
 
         // ==================== DRAW SKYBOX ====================
         if (cubemapTexture != 0) {
@@ -1065,6 +1548,17 @@ int main()
     bus.cleanup();
     sceneSphere.cleanup();
     sceneCone.cleanup();
+    bezierVase.cleanup();
+    bezierWaterTower.cleanup();
+    splineLamp.cleanup();
+    splineBollard.cleanup();
+    ruledCanopy.cleanup();
+    ringCheckpoint.cleanup();
+    eiffelLeg.cleanup();
+    eiffelUpperShaft.cleanup();
+    eiffelTopBulb.cleanup();
+    for (int i = 0; i < 4; i++) eiffelArch[i].cleanup();
+    eiffelPlatform.cleanup();
     if (skyboxVAO) { glDeleteVertexArrays(1, &skyboxVAO); glDeleteBuffers(1, &skyboxVBO); }
     unsigned int allTex[] = { texFloor, texCarpet, texFabric, texWall, texDashboard, texBusBody, texSphere, texCone,
                               texStoneWall, texRoofTile, texBrickWall };
@@ -1112,6 +1606,56 @@ void scroll_callback(GLFWwindow* window, double xoffset, double yoffset) {
 }
 
 // ============================================================================
+// COLLISION DETECTION HELPERS
+// ============================================================================
+// Bus AABB half-extents (local space): roughly 5x1.5x1.5 (half of 10x3x3)
+const float BUS_HALF_X = 5.0f;
+const float BUS_HALF_Y = 1.5f;
+const float BUS_HALF_Z = 1.5f;
+
+// Get bus AABB in world space (axis-aligned bounding box around rotated bus)
+AABB getBusAABB() {
+    glm::vec3 pos = busPosition;
+    pos.y += HOVER_HEIGHT + bus.hoverBobOffset + busAltitude;
+    // For a rotated box, compute the encompassing AABB
+    float rad = glm::radians(busYaw);
+    float cosA = fabs(cos(rad)), sinA = fabs(sin(rad));
+    float extX = BUS_HALF_X * cosA + BUS_HALF_Z * sinA;
+    float extZ = BUS_HALF_X * sinA + BUS_HALF_Z * cosA;
+    AABB box;
+    box.minPt = pos - glm::vec3(extX, BUS_HALF_Y, extZ);
+    box.maxPt = pos + glm::vec3(extX, BUS_HALF_Y, extZ);
+    return box;
+}
+
+bool aabbOverlap(const AABB& a, const AABB& b) {
+    return (a.minPt.x <= b.maxPt.x && a.maxPt.x >= b.minPt.x) &&
+           (a.minPt.y <= b.maxPt.y && a.maxPt.y >= b.minPt.y) &&
+           (a.minPt.z <= b.maxPt.z && a.maxPt.z >= b.minPt.z);
+}
+
+bool checkBusCollision(glm::vec3 newPos) {
+    // Temporarily compute bus AABB at newPos
+    glm::vec3 savedPos = busPosition;
+    busPosition = newPos;
+    AABB busBox = getBusAABB();
+    busPosition = savedPos;
+
+    for (const auto& box : collisionBoxes) {
+        if (aabbOverlap(busBox, box)) return true;
+    }
+    return false;
+}
+
+// Build collision boxes for a given building (called during rendering)
+void addBuildingCollision(glm::vec3 center, glm::vec3 halfExtents) {
+    AABB box;
+    box.minPt = center - halfExtents;
+    box.maxPt = center + halfExtents;
+    collisionBoxes.push_back(box);
+}
+
+// ============================================================================
 // PROCESS INPUT — continuous key handling
 // ============================================================================
 void processInput(GLFWwindow* window) {
@@ -1147,7 +1691,16 @@ void processInput(GLFWwindow* window) {
         }
         busSteerAngle = glm::clamp(busSteerAngle, -MAX_STEER, MAX_STEER);
         if (busSpeed != 0.0f) busYaw += busSteerAngle * busSpeed * deltaTime * 0.1f;
-        busPosition += forwardDir * busSpeed * deltaTime;
+
+        // Collision-aware movement: try new position, revert if blocked
+        glm::vec3 newPos = busPosition + forwardDir * busSpeed * deltaTime;
+        if (!checkBusCollision(newPos)) {
+            busPosition = newPos;
+        } else {
+            // Hit something - stop and bounce back slightly
+            busSpeed *= -0.3f;
+        }
+
         bus.steeringAngle = busSteerAngle;
         bus.jetEngineOn = true;
 

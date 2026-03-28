@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -E \"\\\\.\\(h|cpp|frag|vert|vcxproj\\)$\")",
+      "Bash(ls -la \"d:\\\\Academics\\\\Graphics\\\\Lab3_assignment\"/*.sln)"
+    ]
+  }
+}
