@@ -277,6 +277,145 @@ public:
 };
 
 // ============================================================================
+// POLYGON RING CLASS - Non-circular ring shapes (hexagon, triangle, square, pentagon, star)
+// Creates a tubular ring following a polygon path (pos3 + normal3 + texcoord2)
+// ============================================================================
+class PolygonRing {
+public:
+    unsigned int VAO, VBO;
+    bool initialized = false;
+    int vertexCount = 0;
+
+    // Safe normalize: returns fallback if vector is near-zero (avoids NaN)
+    static glm::vec3 safeNormalize(glm::vec3 v, glm::vec3 fallback = glm::vec3(1, 0, 0)) {
+        float len = glm::length(v);
+        if (len < 1e-6f) return fallback;
+        return v / len;
+    }
+
+    // sides: number of polygon sides (3=triangle, 4=square, 5=pentagon, 6=hexagon)
+    // mainRadius: distance from center to polygon corners
+    // tubeRadius: thickness of the tube
+    void init(int sides = 6, float mainRadius = 5.0f, float tubeRadius = 0.5f,
+              int tubeSegments = 12, int pathSubdivisions = 6)
+    {
+        if (initialized) return;
+        std::vector<float> vertices;
+
+        // Total path points along polygon perimeter
+        int totalPath = sides * pathSubdivisions;
+        if (totalPath < 3) totalPath = 3;
+
+        // Generate polygon path points (straight edges between corners)
+        std::vector<glm::vec3> pathPoints;
+
+        for (int i = 0; i < totalPath; i++) {
+            float t = (float)i / totalPath;
+            int cornerIdx = (int)(t * sides);
+            if (cornerIdx >= sides) cornerIdx = sides - 1;
+            int nextCorner = (cornerIdx + 1) % sides;
+            float localT = (t * sides) - cornerIdx;
+
+            float a0 = cornerIdx * 2.0f * (float)M_PI / sides;
+            float a1 = nextCorner * 2.0f * (float)M_PI / sides;
+
+            float px = mainRadius * (cos(a0) * (1.0f - localT) + cos(a1) * localT);
+            float pz = mainRadius * (sin(a0) * (1.0f - localT) + sin(a1) * localT);
+
+            pathPoints.push_back(glm::vec3(px, 0.0f, pz));
+        }
+
+        // Compute tangents via finite differences (closed loop)
+        std::vector<glm::vec3> pathTangents;
+        for (int i = 0; i < totalPath; i++) {
+            int next = (i + 1) % totalPath;
+            int prev = (i - 1 + totalPath) % totalPath;
+            glm::vec3 diff = pathPoints[next] - pathPoints[prev];
+            pathTangents.push_back(safeNormalize(diff, glm::vec3(1, 0, 0)));
+        }
+
+        // Precompute local frames at each path point
+        std::vector<glm::vec3> normals(totalPath);
+        std::vector<glm::vec3> binormals(totalPath);
+        glm::vec3 up(0.0f, 1.0f, 0.0f);
+
+        for (int i = 0; i < totalPath; i++) {
+            glm::vec3 t = pathTangents[i];
+            glm::vec3 n = safeNormalize(glm::cross(t, up), glm::vec3(0, 0, 1));
+            glm::vec3 b = safeNormalize(glm::cross(n, t), glm::vec3(0, 1, 0));
+            normals[i] = n;
+            binormals[i] = b;
+        }
+
+        // Build tube mesh along path
+        for (int i = 0; i < totalPath; i++) {
+            int i1 = (i + 1) % totalPath;
+
+            glm::vec3 p0 = pathPoints[i],  p1 = pathPoints[i1];
+            glm::vec3 n0 = normals[i],     n1 = normals[i1];
+            glm::vec3 b0 = binormals[i],   b1 = binormals[i1];
+
+            float u0 = (float)i / totalPath;
+            float u1 = (float)(i + 1) / totalPath;
+
+            for (int j = 0; j < tubeSegments; j++) {
+                float phi0 = 2.0f * (float)M_PI * j / tubeSegments;
+                float phi1 = 2.0f * (float)M_PI * (j + 1) / tubeSegments;
+                float v0 = (float)j / tubeSegments;
+                float v1 = (float)(j + 1) / tubeSegments;
+
+                auto ringVert = [&](glm::vec3 center, glm::vec3 normal, glm::vec3 binormal,
+                                    float phi, float u, float v) {
+                    glm::vec3 offset = cos(phi) * normal + sin(phi) * binormal;
+                    glm::vec3 pos = center + tubeRadius * offset;
+                    glm::vec3 norm = safeNormalize(offset, glm::vec3(0, 1, 0));
+                    vertices.insert(vertices.end(), {pos.x, pos.y, pos.z, norm.x, norm.y, norm.z, u, v});
+                };
+
+                // Triangle 1
+                ringVert(p0, n0, b0, phi0, u0, v0);
+                ringVert(p1, n1, b1, phi0, u1, v0);
+                ringVert(p1, n1, b1, phi1, u1, v1);
+                // Triangle 2
+                ringVert(p1, n1, b1, phi1, u1, v1);
+                ringVert(p0, n0, b0, phi1, u0, v1);
+                ringVert(p0, n0, b0, phi0, u0, v0);
+            }
+        }
+
+        vertexCount = (int)vertices.size() / 8;
+        glGenVertexArrays(1, &VAO);
+        glGenBuffers(1, &VBO);
+        glBindVertexArray(VAO);
+        glBindBuffer(GL_ARRAY_BUFFER, VBO);
+        glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(float), vertices.data(), GL_STATIC_DRAW);
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)0);
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float)));
+        glEnableVertexAttribArray(1);
+        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(6 * sizeof(float)));
+        glEnableVertexAttribArray(2);
+        glBindVertexArray(0);
+        initialized = true;
+    }
+
+    void draw(const Shader& shader, glm::mat4 model, glm::vec3 color) {
+        shader.setVec3("objectColor", color);
+        shader.setMat4("model", model);
+        glBindVertexArray(VAO);
+        glDrawArrays(GL_TRIANGLES, 0, vertexCount);
+    }
+
+    void cleanup() {
+        if (initialized) {
+            glDeleteVertexArrays(1, &VAO);
+            glDeleteBuffers(1, &VBO);
+            initialized = false;
+        }
+    }
+};
+
+// ============================================================================
 // SPHERE CLASS - UV Sphere (pos3 + normal3 + texcoord2)
 // ============================================================================
 class Sphere {

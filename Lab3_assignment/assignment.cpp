@@ -98,6 +98,9 @@ unsigned int texContainer = 0, texEmoji = 0;
 // New textures for cylinders, cones, and buildings
 unsigned int texStoneWall = 0, texRoofTile = 0, texBrickWall = 0;
 
+// Carpet textures for city ground
+unsigned int texCarpetTile = 0, texEarthTone = 0;
+
 // Skybox
 unsigned int skyboxVAO = 0, skyboxVBO = 0;
 unsigned int cubemapTexture = 0;
@@ -114,6 +117,7 @@ RuledSurface  ruledCanopy;        // Canopy/awning between two curves
 
 // Ring checkpoints the hover vehicle flies through
 Torus ringCheckpoint;
+PolygonRing hexRing, triRing, squareRing, pentRing;
 
 // Eiffel Tower components (built from Bezier curves + ruled surfaces)
 BezierSurface eiffelLeg;          // One curved leg (Bezier revolution - tapered)
@@ -366,6 +370,7 @@ unsigned int loadTexture(const char* path, GLenum wrapMode, GLenum filterMode) {
     unsigned int textureID;
     glGenTextures(1, &textureID);
     glBindTexture(GL_TEXTURE_2D, textureID);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1); // RGB rows may not be 4-byte aligned
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, outW, outH, 0, GL_RGB, GL_UNSIGNED_BYTE, finalData);
     glGenerateMipmap(GL_TEXTURE_2D);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, wrapMode);
@@ -657,6 +662,17 @@ int main()
     // mainRadius=6 gives 12-unit diameter hole, tubeRadius=0.6 makes it clearly visible
     ringCheckpoint.init(6.0f, 0.6f, 36, 18);
 
+    // Polygon ring shapes for variety
+    std::cout << "  Initializing polygon rings..." << std::flush;
+    hexRing.init(6, 6.0f, 0.5f, 10, 3);    // Hexagon
+    std::cout << " hex" << std::flush;
+    triRing.init(3, 6.0f, 0.55f, 10, 3);   // Triangle
+    std::cout << " tri" << std::flush;
+    squareRing.init(4, 6.0f, 0.5f, 10, 3); // Square
+    std::cout << " sq" << std::flush;
+    pentRing.init(5, 6.0f, 0.5f, 10, 3);   // Pentagon
+    std::cout << " pent [OK]" << std::endl;
+
     // Eiffel Tower construction from curves
     {
         // Leg profile: wide curved base that tapers inward (Bezier revolution, quarter-profile)
@@ -739,20 +755,7 @@ int main()
         }
     }
 
-    // Setup ring checkpoint positions along the road
-    // Bus starts at origin facing -X, so rings go along negative X
-    {
-        ringPositions.clear();
-        for (int i = 0; i < 10; i++) {
-            RingCheckpoint rc;
-            // Place rings ahead of bus (-X direction), at heights 8-14 units (clearly in the sky)
-            rc.position = glm::vec3(-40.0f - i * 50.0f, 10.0f + 4.0f * sin(i * 0.9f), 0.0f);
-            rc.yaw = 0.0f;
-            rc.radius = 6.0f;
-            rc.passed = false;
-            ringPositions.push_back(rc);
-        }
-    }
+    // Ring positions are now generated procedurally in the render loop (infinite)
 
     // ==================== SKYBOX CUBE VAO ====================
     float skyboxVertices[] = {
@@ -829,6 +832,10 @@ int main()
     texStoneWall = loadTexture("textures/stone_wall.jpg",                  GL_REPEAT, GL_LINEAR);
     texRoofTile  = loadTexture("textures/roof_tile.jpg",                   GL_REPEAT, GL_LINEAR);
     texBrickWall = loadTexture("textures/Seamless brick wall texture.jpg", GL_REPEAT, GL_LINEAR);
+
+    // Carpet textures for urban city ground
+    texCarpetTile = loadTexture("textures/commercial-carpet-tiles.jpg", GL_REPEAT, GL_LINEAR);
+    texEarthTone  = loadTexture("textures/earth-tone-tiles.png",         GL_REPEAT, GL_LINEAR);
 
     // Skybox cubemap
     cubemapTexture = loadCubemapFromFaces();
@@ -1069,79 +1076,119 @@ int main()
                 }
             }
 
-            // --- GRASS STRIPS (both sides) with road-grass blending ---
+            // --- GROUND STRIPS (both sides): carpet in building zone, grass beyond ---
             for (int side = -1; side <= 1; side += 2) {
-                float grassZ = side * (ROAD_WIDTH * 0.5f + GRASS_WIDTH * 0.5f);
-                if (texGrass != 0 && texRoad != 0) {
-                    // Use multi-texture blend mode for smooth road-grass transition
-                    ourShader.setInt("textureMode", 4);
-                    // Tile grass texture for natural look
-                    ourShader.setVec2("texScale", glm::vec2(ROAD_SEGMENT_LEN / 5.0f, GRASS_WIDTH / 5.0f));
-                    // Blend parameters: transition at road edge along Z axis
-                    ourShader.setFloat("blendEdge", ROAD_WIDTH * 0.5f);
-                    ourShader.setFloat("blendWidth", 2.5f);
-                    ourShader.setInt("blendAxis", 2);  // Z axis
-                    // Slot 0: road texture (near road center)
-                    glActiveTexture(GL_TEXTURE0);
-                    glBindTexture(GL_TEXTURE_2D, texRoad);
-                    ourShader.setInt("textureSampler", 0);
-                    // Slot 1: grass texture (far from road center)
-                    glActiveTexture(GL_TEXTURE1);
-                    glBindTexture(GL_TEXTURE_2D, texGrass);
-                    ourShader.setInt("textureSampler2", 1);
-                } else if (texGrass != 0) {
-                    ourShader.setInt("textureMode", 3);
-                    ourShader.setVec2("texScale", glm::vec2(ROAD_SEGMENT_LEN / 5.0f, GRASS_WIDTH / 5.0f));
-                    glActiveTexture(GL_TEXTURE0);
-                    glBindTexture(GL_TEXTURE_2D, texGrass);
-                    ourShader.setInt("textureSampler", 0);
+                // Inner strip: carpet/tile in the building zone (from road edge to BUILDING_ZONE_END)
+                float carpetWidth = BUILDING_ZONE_END - ROAD_WIDTH * 0.5f;
+                float carpetZ = side * (ROAD_WIDTH * 0.5f + carpetWidth * 0.5f);
+                {
+                    // Alternate carpet textures per segment for variety
+                    unsigned int carpTex = (segID % 2 == 0) ? texCarpetTile : texEarthTone;
+                    if (carpTex == 0) carpTex = texCarpetTile;
+                    if (carpTex == 0) carpTex = texEarthTone;
+                    if (carpTex != 0) {
+                        ourShader.setInt("textureMode", 3);
+                        ourShader.setVec2("texScale", glm::vec2(ROAD_SEGMENT_LEN / 4.0f, carpetWidth / 4.0f));
+                        glActiveTexture(GL_TEXTURE0);
+                        glBindTexture(GL_TEXTURE_2D, carpTex);
+                        ourShader.setInt("textureSampler", 0);
+                    }
+                    glm::mat4 model = glm::translate(glm::mat4(1.0f),
+                        glm::vec3(segX + ROAD_SEGMENT_LEN * 0.5f, -0.1f, carpetZ));
+                    model = glm::scale(model, glm::vec3(ROAD_SEGMENT_LEN, 0.1f, carpetWidth));
+                    bus.cube.draw(ourShader, model, glm::vec3(0.55f, 0.42f, 0.32f));
+                    ourShader.setInt("textureMode", 0);
+                    ourShader.setVec2("texScale", glm::vec2(1.0f, 1.0f));
                 }
-                glm::mat4 model = glm::translate(glm::mat4(1.0f), 
-                    glm::vec3(segX + ROAD_SEGMENT_LEN * 0.5f, -0.1f, grassZ));
-                model = glm::scale(model, glm::vec3(ROAD_SEGMENT_LEN, 0.1f, GRASS_WIDTH));
-                bus.cube.draw(ourShader, model, glm::vec3(0.15f, 0.45f, 0.1f));
-                ourShader.setInt("textureMode", 0);
-                ourShader.setVec2("texScale", glm::vec2(1.0f, 1.0f));
+
+                // Outer strip: grass beyond the building zone
+                float outerGrassWidth = GRASS_WIDTH - carpetWidth;
+                if (outerGrassWidth > 0.0f) {
+                    float grassZ = side * (BUILDING_ZONE_END + outerGrassWidth * 0.5f);
+                    if (texGrass != 0) {
+                        ourShader.setInt("textureMode", 3);
+                        ourShader.setVec2("texScale", glm::vec2(ROAD_SEGMENT_LEN / 5.0f, outerGrassWidth / 5.0f));
+                        glActiveTexture(GL_TEXTURE0);
+                        glBindTexture(GL_TEXTURE_2D, texGrass);
+                        ourShader.setInt("textureSampler", 0);
+                    }
+                    glm::mat4 model = glm::translate(glm::mat4(1.0f),
+                        glm::vec3(segX + ROAD_SEGMENT_LEN * 0.5f, -0.12f, grassZ));
+                    model = glm::scale(model, glm::vec3(ROAD_SEGMENT_LEN, 0.1f, outerGrassWidth));
+                    bus.cube.draw(ourShader, model, glm::vec3(0.15f, 0.45f, 0.1f));
+                    ourShader.setInt("textureMode", 0);
+                    ourShader.setVec2("texScale", glm::vec2(1.0f, 1.0f));
+                }
             }
 
-            // --- BUILDINGS (both sides) ---
+            // --- BUILDINGS (both sides) - urban grid layout with entry paths ---
+            // Reduced to 3 buildings per side for less crowding, placed in orderly rows
+            int buildingsPerSide = 3;
             for (int side = -1; side <= 1; side += 2) {
-                for (int b = 0; b < BUILDINGS_PER_SEGMENT; b++) {
+                for (int b = 0; b < buildingsPerSide; b++) {
                     int bSeed = segID * 100 + side * 50 + b;
 
-                    // Random position within segment
-                    float bx = segX + cityRand(bSeed, 1) * ROAD_SEGMENT_LEN;
-                    float bz = side * (BUILDING_ZONE_START + cityRand(bSeed, 2) * (BUILDING_ZONE_END - BUILDING_ZONE_START));
+                    // Grid-like placement: evenly spaced along segment, staggered rows
+                    float spacing = ROAD_SEGMENT_LEN / (buildingsPerSide + 1);
+                    float bx = segX + spacing * (b + 1);
+                    // Two rows: near row and far row, alternating per building
+                    float nearDist = BUILDING_ZONE_START + 4.0f;
+                    float farDist = BUILDING_ZONE_START + 14.0f + cityRand(bSeed, 20) * 8.0f;
+                    float bz = side * ((b % 2 == 0) ? nearDist : farDist);
 
                     // Random building type: 0=stacked cubes, 1=tall building, 2=cone tower
                     int bType = (int)(cityRand(bSeed, 3) * 3.0f);
                     int colorIdx = (int)(cityRand(bSeed, 4) * NUM_PALETTE_COLORS) % NUM_PALETTE_COLORS;
                     glm::vec3 bColor = buildingPalette[colorIdx];
 
-                    // Choose texture for this building (all use mode 3 for fragment-blended Phong)
+                    // Choose texture
                     int texChoice = (int)(cityRand(bSeed, 10) * 6.0f);
                     unsigned int bTex = 0;
-                    int bTexMode = 3;  // Fragment-blended by default
-                    if (texChoice == 0 && texContainer != 0) { bTex = texContainer; bTexMode = 3; }
-                    else if (texChoice == 1 && texWall != 0) { bTex = texWall; bTexMode = 3; }
-                    else if (texChoice == 2 && texEmoji != 0) { bTex = texEmoji; bTexMode = 3; }
-                    else if (texChoice == 3 && texStoneWall != 0) { bTex = texStoneWall; bTexMode = 3; }
-                    else if (texChoice == 4 && texBrickWall != 0) { bTex = texBrickWall; bTexMode = 3; }
-                    // texChoice == 5 → pure color (no texture)
+                    int bTexMode = 3;
+                    if (texChoice == 0 && texContainer != 0) { bTex = texContainer; }
+                    else if (texChoice == 1 && texWall != 0) { bTex = texWall; }
+                    else if (texChoice == 2 && texEmoji != 0) { bTex = texEmoji; }
+                    else if (texChoice == 3 && texStoneWall != 0) { bTex = texStoneWall; }
+                    else if (texChoice == 4 && texBrickWall != 0) { bTex = texBrickWall; }
+
+                    // --- CARPET ENTRY PATH from building to road edge ---
+                    {
+                        float roadEdgeZ = side * (ROAD_WIDTH * 0.5f + 0.5f);
+                        float pathLen = fabs(bz - roadEdgeZ);
+                        float pathCenterZ = (bz + roadEdgeZ) * 0.5f;
+                        float pathWidth = 1.2f;
+
+                        // Alternate entry path texture
+                        unsigned int pathTex = (b % 2 == 0) ? texEarthTone : texCarpetTile;
+                        if (pathTex == 0) pathTex = texCarpetTile;
+                        if (pathTex == 0) pathTex = texEarthTone;
+                        if (pathTex != 0) {
+                            ourShader.setInt("textureMode", 3);
+                            ourShader.setVec2("texScale", glm::vec2(pathWidth / 1.5f, pathLen / 1.5f));
+                            glActiveTexture(GL_TEXTURE0);
+                            glBindTexture(GL_TEXTURE_2D, pathTex);
+                            ourShader.setInt("textureSampler", 0);
+                        }
+                        glm::mat4 pathModel = glm::translate(glm::mat4(1.0f),
+                            glm::vec3(bx, -0.08f, pathCenterZ));
+                        pathModel = glm::scale(pathModel, glm::vec3(pathWidth, 0.06f, pathLen));
+                        bus.cube.draw(ourShader, pathModel, glm::vec3(0.6f, 0.5f, 0.38f));
+                        ourShader.setInt("textureMode", 0);
+                        ourShader.setVec2("texScale", glm::vec2(1.0f, 1.0f));
+                    }
 
                     if (bType == 0) {
                         // ---- STACKED CUBES ----
-                        int numCubes = 1 + (int)(cityRand(bSeed, 5) * 4.0f);
+                        int numCubes = 1 + (int)(cityRand(bSeed, 5) * 3.0f);
                         float yOffset = 0.0f;
                         for (int c = 0; c < numCubes; c++) {
-                            float cw = 1.5f + cityRand(bSeed * 10 + c, 6) * 2.5f;
-                            float ch = 1.0f + cityRand(bSeed * 10 + c, 7) * 3.0f;
-                            float cd = 1.5f + cityRand(bSeed * 10 + c, 8) * 2.5f;
+                            float cw = 2.0f + cityRand(bSeed * 10 + c, 6) * 2.0f;
+                            float ch = 1.5f + cityRand(bSeed * 10 + c, 7) * 3.0f;
+                            float cd = 2.0f + cityRand(bSeed * 10 + c, 8) * 2.0f;
                             int cc = (int)(cityRand(bSeed * 10 + c, 9) * NUM_PALETTE_COLORS) % NUM_PALETTE_COLORS;
 
                             if (bTex != 0) {
                                 ourShader.setInt("textureMode", bTexMode);
-                                // Scale UV to tile proportionally: avoid stretching
                                 float maxDim = std::max({cw, ch, cd});
                                 ourShader.setVec2("texScale", glm::vec2(cw / maxDim, ch / maxDim));
                                 glActiveTexture(GL_TEXTURE0);
@@ -1149,14 +1196,13 @@ int main()
                                 ourShader.setInt("textureSampler", 0);
                             }
 
-                            glm::mat4 model = glm::translate(glm::mat4(1.0f), 
+                            glm::mat4 model = glm::translate(glm::mat4(1.0f),
                                 glm::vec3(bx, yOffset + ch * 0.5f, bz));
                             model = glm::scale(model, glm::vec3(cw, ch, cd));
                             bus.cube.draw(ourShader, model, buildingPalette[cc]);
                             ourShader.setInt("textureMode", 0);
                             ourShader.setVec2("texScale", glm::vec2(1.0f, 1.0f));
 
-                            // Add collision box for this cube
                             addBuildingCollision(glm::vec3(bx, yOffset + ch * 0.5f, bz),
                                                  glm::vec3(cw * 0.5f, ch * 0.5f, cd * 0.5f));
                             yOffset += ch;
@@ -1164,13 +1210,12 @@ int main()
                     }
                     else if (bType == 1) {
                         // ---- TALL BUILDING ----
-                        float bw = 2.0f + cityRand(bSeed, 5) * 3.0f;
-                        float bh = 4.0f + cityRand(bSeed, 6) * 12.0f;
-                        float bd = 2.0f + cityRand(bSeed, 7) * 3.0f;
+                        float bw = 2.5f + cityRand(bSeed, 5) * 3.0f;
+                        float bh = 5.0f + cityRand(bSeed, 6) * 12.0f;
+                        float bd = 2.5f + cityRand(bSeed, 7) * 3.0f;
 
                         if (bTex != 0) {
                             ourShader.setInt("textureMode", bTexMode);
-                            // Scale UV to tile proportionally: avoid stretching
                             float maxDim = std::max({bw, bh, bd});
                             ourShader.setVec2("texScale", glm::vec2(bw / maxDim, bh / maxDim));
                             glActiveTexture(GL_TEXTURE0);
@@ -1178,18 +1223,17 @@ int main()
                             ourShader.setInt("textureSampler", 0);
                         }
 
-                        glm::mat4 model = glm::translate(glm::mat4(1.0f), 
+                        glm::mat4 model = glm::translate(glm::mat4(1.0f),
                             glm::vec3(bx, bh * 0.5f, bz));
                         model = glm::scale(model, glm::vec3(bw, bh, bd));
                         bus.cube.draw(ourShader, model, bColor);
                         ourShader.setInt("textureMode", 0);
                         ourShader.setVec2("texScale", glm::vec2(1.0f, 1.0f));
 
-                        // Collision for tall building
                         addBuildingCollision(glm::vec3(bx, bh * 0.5f, bz),
                                              glm::vec3(bw * 0.5f, bh * 0.5f, bd * 0.5f));
 
-                        // Windows (small dark cubes on front face)
+                        // Windows
                         int wRows = (int)(bh / 1.5f);
                         int wCols = (int)(bw / 1.2f);
                         if (wCols < 1) wCols = 1;
@@ -1198,7 +1242,7 @@ int main()
                                 float wx = bx - bw * 0.3f + wc * (bw * 0.6f / std::max(wCols - 1, 1));
                                 float wy = 1.5f + wr * 1.5f;
                                 float wz = bz + (side > 0 ? -bd * 0.52f : bd * 0.52f);
-                                glm::mat4 wModel = glm::translate(glm::mat4(1.0f), 
+                                glm::mat4 wModel = glm::translate(glm::mat4(1.0f),
                                     glm::vec3(wx, wy, wz));
                                 wModel = glm::scale(wModel, glm::vec3(0.6f, 0.8f, 0.05f));
                                 bus.cube.draw(ourShader, wModel, glm::vec3(0.05f, 0.08f, 0.15f));
@@ -1211,14 +1255,11 @@ int main()
                         float towerH = 3.0f + cityRand(bSeed, 6) * 8.0f;
                         float coneH = 1.5f + cityRand(bSeed, 7) * 2.0f;
 
-                        // Cylinder body — use stone_wall or brick_wall texture
                         {
-                            // Alternate between stone and brick based on building seed
                             unsigned int cylTex = (bSeed % 2 == 0 && texStoneWall != 0) ? texStoneWall :
                                                   (texBrickWall != 0 ? texBrickWall : bTex);
                             if (cylTex != 0) {
                                 ourShader.setInt("textureMode", 3);
-                                // Tile texture proportionally around cylinder circumference vs height
                                 float circumference = 2.0f * 3.14159f * radius;
                                 ourShader.setVec2("texScale", glm::vec2(circumference / 2.0f, towerH / 2.0f));
                                 glActiveTexture(GL_TEXTURE0);
@@ -1227,29 +1268,26 @@ int main()
                             }
                         }
 
-                        glm::mat4 model = glm::translate(glm::mat4(1.0f), 
+                        glm::mat4 model = glm::translate(glm::mat4(1.0f),
                             glm::vec3(bx, towerH * 0.5f, bz));
                         model = glm::scale(model, glm::vec3(radius, towerH, radius));
                         bus.cylinder.draw(ourShader, model, bColor);
                         ourShader.setInt("textureMode", 0);
                         ourShader.setVec2("texScale", glm::vec2(1.0f, 1.0f));
 
-                        // Collision for cone-topped tower (use cylinder bounding box)
                         addBuildingCollision(glm::vec3(bx, (towerH + coneH) * 0.5f, bz),
                                              glm::vec3(radius, (towerH + coneH) * 0.5f, radius));
 
-                        // Cone roof — use roof_tile texture
                         int roofColor = (colorIdx + 3) % NUM_PALETTE_COLORS;
                         if (texRoofTile != 0) {
                             ourShader.setInt("textureMode", 3);
-                            // Tile roof texture: circumference around cone, height up the slope
                             float circumference = 2.0f * 3.14159f * radius;
                             ourShader.setVec2("texScale", glm::vec2(circumference / 2.0f, coneH / 2.0f));
                             glActiveTexture(GL_TEXTURE0);
                             glBindTexture(GL_TEXTURE_2D, texRoofTile);
                             ourShader.setInt("textureSampler", 0);
                         }
-                        model = glm::translate(glm::mat4(1.0f), 
+                        model = glm::translate(glm::mat4(1.0f),
                             glm::vec3(bx, towerH + coneH * 0.5f, bz));
                         model = glm::scale(model, glm::vec3(radius, coneH, radius));
                         sceneCone.draw(ourShader, model, buildingPalette[roofColor]);
@@ -1265,97 +1303,109 @@ int main()
         {
             float time = (float)glfwGetTime();
 
-            // --- BEZIER VASES along the road (decorative, on sidewalk) ---
-            for (int i = -5; i <= 15; i++) {
-                float vaseX = i * 25.0f;
-                for (int side = -1; side <= 1; side += 2) {
-                    float vaseZ = side * (ROAD_WIDTH * 0.5f + 1.5f);
-                    glm::mat4 model = glm::translate(glm::mat4(1.0f),
-                        glm::vec3(vaseX, 0.0f, vaseZ));
-                    model = glm::scale(model, glm::vec3(1.2f, 2.0f, 1.2f));
-                    bezierVase.draw(ourShader, model, glm::vec3(0.7f, 0.25f, 0.1f));
-
-                    // Collision for vase
-                    addBuildingCollision(glm::vec3(vaseX, 1.0f, vaseZ),
-                                         glm::vec3(0.7f, 1.0f, 0.7f));
+            // --- BEZIER VASES along the road (infinite, based on bus position) ---
+            {
+                float vaseSpacing = 25.0f;
+                int vaseStart = (int)floor((busX - VISIBLE_SEGMENTS * ROAD_SEGMENT_LEN * 0.5f) / vaseSpacing);
+                int vaseEnd = (int)ceil((busX + VISIBLE_SEGMENTS * ROAD_SEGMENT_LEN * 0.5f) / vaseSpacing);
+                for (int i = vaseStart; i <= vaseEnd; i++) {
+                    float vaseX = i * vaseSpacing;
+                    for (int side = -1; side <= 1; side += 2) {
+                        float vaseZ = side * (ROAD_WIDTH * 0.5f + 1.5f);
+                        glm::mat4 model = glm::translate(glm::mat4(1.0f),
+                            glm::vec3(vaseX, 0.0f, vaseZ));
+                        model = glm::scale(model, glm::vec3(1.2f, 2.0f, 1.2f));
+                        bezierVase.draw(ourShader, model, glm::vec3(0.7f, 0.25f, 0.1f));
+                        addBuildingCollision(glm::vec3(vaseX, 1.0f, vaseZ),
+                                             glm::vec3(0.7f, 1.0f, 0.7f));
+                    }
                 }
             }
 
-            // --- BEZIER WATER TOWERS (a few scattered) ---
+            // --- BEZIER WATER TOWERS (infinite, one every 150 units) ---
             {
-                glm::vec3 waterTowerPositions[] = {
-                    glm::vec3(80.0f, 0.0f, -20.0f),
-                    glm::vec3(200.0f, 0.0f, 22.0f),
-                    glm::vec3(-60.0f, 0.0f, -18.0f)
-                };
-                for (auto& wtp : waterTowerPositions) {
+                float wtSpacing = 150.0f;
+                int wtStart = (int)floor((busX - 300.0f) / wtSpacing);
+                int wtEnd = (int)ceil((busX + 300.0f) / wtSpacing);
+                for (int i = wtStart; i <= wtEnd; i++) {
+                    float wtX = i * wtSpacing + 50.0f;
+                    int wtSeed = i * 7919;
+                    float wtZ = ((cityHash(wtSeed, 0) % 2 == 0) ? 1.0f : -1.0f) *
+                                (18.0f + cityRand(wtSeed, 1) * 8.0f);
+                    glm::vec3 wtp(wtX, 0.0f, wtZ);
                     glm::mat4 model = glm::translate(glm::mat4(1.0f), wtp);
                     model = glm::scale(model, glm::vec3(3.0f, 10.0f, 3.0f));
                     bezierWaterTower.draw(ourShader, model, glm::vec3(0.5f, 0.5f, 0.6f));
-
                     addBuildingCollision(wtp + glm::vec3(0, 5, 0),
                                          glm::vec3(2.0f, 5.0f, 2.0f));
                 }
             }
 
-            // --- SPLINE STREET LAMPS along road ---
-            for (int i = -5; i <= 15; i++) {
-                float lampX = i * 20.0f + 10.0f;
-                for (int side = -1; side <= 1; side += 2) {
-                    float lampZ = side * (ROAD_WIDTH * 0.5f + 0.8f);
-                    glm::mat4 model = glm::translate(glm::mat4(1.0f),
-                        glm::vec3(lampX, 0.0f, lampZ));
-                    model = glm::scale(model, glm::vec3(0.6f, 5.0f, 0.6f));
-                    splineLamp.draw(ourShader, model, glm::vec3(0.3f, 0.3f, 0.35f));
-
-                    // Lamp light glow (emissive sphere on top)
-                    if (emissiveLightOn) {
-                        ourShader.setBool("isEmissive", true);
-                        glm::mat4 glowModel = glm::translate(glm::mat4(1.0f),
-                            glm::vec3(lampX, 4.8f, lampZ));
-                        glowModel = glm::scale(glowModel, glm::vec3(0.4f, 0.4f, 0.4f));
-                        sceneSphere.draw(ourShader, glowModel, glm::vec3(1.0f, 0.9f, 0.5f));
-                        ourShader.setBool("isEmissive", false);
-                    }
-
-                    addBuildingCollision(glm::vec3(lampX, 2.5f, lampZ),
-                                         glm::vec3(0.3f, 2.5f, 0.3f));
-                }
-            }
-
-            // --- SPLINE BOLLARDS at road intersections ---
-            for (int i = 0; i < 8; i++) {
-                float bx = i * 50.0f;
-                for (int side = -1; side <= 1; side += 2) {
-                    float bz = side * (ROAD_WIDTH * 0.5f + 0.3f);
-                    glm::mat4 model = glm::translate(glm::mat4(1.0f),
-                        glm::vec3(bx, 0.0f, bz));
-                    model = glm::scale(model, glm::vec3(0.5f, 1.0f, 0.5f));
-                    splineBollard.draw(ourShader, model, glm::vec3(0.8f, 0.7f, 0.1f));
-
-                    addBuildingCollision(glm::vec3(bx, 0.5f, bz),
-                                         glm::vec3(0.3f, 0.5f, 0.3f));
-                }
-            }
-
-            // --- RULED SURFACE CANOPIES (bus stop shelters) ---
+            // --- SPLINE STREET LAMPS along road (infinite) ---
             {
-                glm::vec3 canopyPositions[] = {
-                    glm::vec3(40.0f, 0.0f, ROAD_WIDTH * 0.5f + 3.0f),
-                    glm::vec3(120.0f, 0.0f, -(ROAD_WIDTH * 0.5f + 3.0f)),
-                    glm::vec3(240.0f, 0.0f, ROAD_WIDTH * 0.5f + 3.0f)
-                };
-                for (auto& cp : canopyPositions) {
+                float lampSpacing = 20.0f;
+                int lampStart = (int)floor((busX - VISIBLE_SEGMENTS * ROAD_SEGMENT_LEN * 0.5f) / lampSpacing);
+                int lampEnd = (int)ceil((busX + VISIBLE_SEGMENTS * ROAD_SEGMENT_LEN * 0.5f) / lampSpacing);
+                for (int i = lampStart; i <= lampEnd; i++) {
+                    float lampX = i * lampSpacing + 10.0f;
+                    for (int side = -1; side <= 1; side += 2) {
+                        float lampZ = side * (ROAD_WIDTH * 0.5f + 0.8f);
+                        glm::mat4 model = glm::translate(glm::mat4(1.0f),
+                            glm::vec3(lampX, 0.0f, lampZ));
+                        model = glm::scale(model, glm::vec3(0.6f, 5.0f, 0.6f));
+                        splineLamp.draw(ourShader, model, glm::vec3(0.3f, 0.3f, 0.35f));
+
+                        if (emissiveLightOn) {
+                            ourShader.setBool("isEmissive", true);
+                            glm::mat4 glowModel = glm::translate(glm::mat4(1.0f),
+                                glm::vec3(lampX, 4.8f, lampZ));
+                            glowModel = glm::scale(glowModel, glm::vec3(0.4f, 0.4f, 0.4f));
+                            sceneSphere.draw(ourShader, glowModel, glm::vec3(1.0f, 0.9f, 0.5f));
+                            ourShader.setBool("isEmissive", false);
+                        }
+
+                        addBuildingCollision(glm::vec3(lampX, 2.5f, lampZ),
+                                             glm::vec3(0.3f, 2.5f, 0.3f));
+                    }
+                }
+            }
+
+            // --- SPLINE BOLLARDS at road intersections (infinite) ---
+            {
+                float bollardSpacing = 50.0f;
+                int bStart = (int)floor((busX - 200.0f) / bollardSpacing);
+                int bEnd = (int)ceil((busX + 200.0f) / bollardSpacing);
+                for (int i = bStart; i <= bEnd; i++) {
+                    float bx = i * bollardSpacing;
+                    for (int side = -1; side <= 1; side += 2) {
+                        float bz = side * (ROAD_WIDTH * 0.5f + 0.3f);
+                        glm::mat4 model = glm::translate(glm::mat4(1.0f),
+                            glm::vec3(bx, 0.0f, bz));
+                        model = glm::scale(model, glm::vec3(0.5f, 1.0f, 0.5f));
+                        splineBollard.draw(ourShader, model, glm::vec3(0.8f, 0.7f, 0.1f));
+                        addBuildingCollision(glm::vec3(bx, 0.5f, bz),
+                                             glm::vec3(0.3f, 0.5f, 0.3f));
+                    }
+                }
+            }
+
+            // --- RULED SURFACE CANOPIES (bus stop shelters, infinite every 200 units) ---
+            {
+                float canopySpacing = 200.0f;
+                int cStart = (int)floor((busX - 400.0f) / canopySpacing);
+                int cEnd = (int)ceil((busX + 400.0f) / canopySpacing);
+                for (int ci = cStart; ci <= cEnd; ci++) {
+                    float cx = ci * canopySpacing + 40.0f;
+                    float cside = (ci % 2 == 0) ? 1.0f : -1.0f;
+                    glm::vec3 cp(cx, 0.0f, cside * (ROAD_WIDTH * 0.5f + 3.0f));
                     glm::mat4 model = glm::translate(glm::mat4(1.0f), cp);
                     ruledCanopy.draw(ourShader, model, glm::vec3(0.6f, 0.65f, 0.7f));
 
-                    // Support pillars for canopy (cubes)
                     for (int p = -1; p <= 1; p += 2) {
                         glm::mat4 pillar = glm::translate(glm::mat4(1.0f),
                             cp + glm::vec3(p * 2.8f, 2.0f, 2.0f));
                         pillar = glm::scale(pillar, glm::vec3(0.15f, 4.0f, 0.15f));
                         bus.cube.draw(ourShader, pillar, glm::vec3(0.4f, 0.4f, 0.45f));
-
                         addBuildingCollision(cp + glm::vec3(p * 2.8f, 2.0f, 2.0f),
                                              glm::vec3(0.15f, 2.0f, 0.15f));
                     }
@@ -1479,44 +1529,63 @@ int main()
                 }
             }
 
-            // --- RING CHECKPOINTS (torus rings to fly through) ---
-            for (size_t i = 0; i < ringPositions.size(); i++) {
-                auto& ring = ringPositions[i];
+            // --- RING CHECKPOINTS (infinite, sparse, varied shapes) ---
+            // Rings every 120 units (sparse), with varied shapes
+            {
+                float ringSpacing = 120.0f;
+                int ringStart = (int)floor((busX - 400.0f) / ringSpacing);
+                int ringEnd = (int)ceil((busX + 400.0f) / ringSpacing);
+                for (int ri = ringStart; ri <= ringEnd; ri++) {
+                    float ringX = ri * ringSpacing;
+                    int ringSeed = ri * 4919;
+                    // Vary height between 8-16 units
+                    float ringY = 10.0f + 4.0f * sin(ri * 0.9f);
+                    // Slight Z offset for variety
+                    float ringZ = sin(ri * 1.7f) * 3.0f;
 
-                // Gentle bobbing animation
-                float bobY = sin(time * 1.5f + i * 0.8f) * 0.5f;
-                glm::vec3 ringPos = ring.position + glm::vec3(0.0f, bobY, 0.0f);
+                    float bobY = sin(time * 1.5f + ri * 0.8f) * 0.5f;
+                    glm::vec3 ringPos(ringX, ringY + bobY, ringZ);
 
-                glm::mat4 model = glm::translate(glm::mat4(1.0f), ringPos);
-                // Rotate ring to face along X-axis (perpendicular to road)
-                model = glm::rotate(model, glm::radians(90.0f), glm::vec3(0, 0, 1));
+                    glm::mat4 model = glm::translate(glm::mat4(1.0f), ringPos);
+                    // Rotate ring to face along X-axis (perpendicular to road)
+                    model = glm::rotate(model, glm::radians(90.0f), glm::vec3(0, 0, 1));
 
-                // Color: green if passed, yellow/orange if not
-                glm::vec3 ringColor;
-                if (ring.passed) {
-                    ringColor = glm::vec3(0.1f, 0.9f, 0.2f);
-                } else {
-                    float pulse = 0.7f + 0.3f * sin(time * 4.0f + i);
-                    ringColor = glm::vec3(1.0f, 0.7f, 0.0f) * pulse;
-                }
+                    // Pick shape based on hash of ring index
+                    int shapeType = (int)(cityHash(ringSeed, 3) % 5); // 0=circle, 1=hex, 2=tri, 3=square, 4=pent
 
-                // Draw with emissive glow
-                ourShader.setBool("isEmissive", true);
-                ourShader.setFloat("alpha", 0.85f);
-                ringCheckpoint.draw(ourShader, model, ringColor);
-                ourShader.setFloat("alpha", 1.0f);
-                ourShader.setBool("isEmissive", false);
+                    // Color varies by shape
+                    glm::vec3 ringColors[] = {
+                        glm::vec3(1.0f, 0.7f, 0.0f),  // gold (circle)
+                        glm::vec3(0.0f, 0.8f, 1.0f),  // cyan (hex)
+                        glm::vec3(1.0f, 0.3f, 0.3f),  // red (triangle)
+                        glm::vec3(0.5f, 1.0f, 0.3f),  // lime (square)
+                        glm::vec3(0.8f, 0.4f, 1.0f),  // purple (pentagon)
+                    };
+                    float pulse = 0.7f + 0.3f * sin(time * 4.0f + ri);
+                    glm::vec3 ringColor = ringColors[shapeType] * pulse;
 
-                // Check if bus passes through this ring
-                if (!ring.passed) {
+                    ourShader.setBool("isEmissive", true);
+                    ourShader.setFloat("alpha", 0.85f);
+
+                    switch (shapeType) {
+                        case 0: ringCheckpoint.draw(ourShader, model, ringColor); break;
+                        case 1: hexRing.draw(ourShader, model, ringColor); break;
+                        case 2: triRing.draw(ourShader, model, ringColor); break;
+                        case 3: squareRing.draw(ourShader, model, ringColor); break;
+                        case 4: pentRing.draw(ourShader, model, ringColor); break;
+                    }
+
+                    ourShader.setFloat("alpha", 1.0f);
+                    ourShader.setBool("isEmissive", false);
+
+                    // Check pass-through
                     glm::vec3 busCenter = busPosition;
                     busCenter.y += HOVER_HEIGHT + bus.hoverBobOffset + busAltitude;
-                    float distXZ = fabs(busCenter.x - ringPos.x); // ring faces along X
+                    float distXZ = fabs(busCenter.x - ringPos.x);
                     float distYZ = sqrt((busCenter.y - ringPos.y) * (busCenter.y - ringPos.y) +
                                         (busCenter.z - ringPos.z) * (busCenter.z - ringPos.z));
-                    if (distXZ < 2.0f && distYZ < ring.radius * 0.8f) {
-                        ring.passed = true;
-                        std::cout << ">> RING " << (i + 1) << " PASSED! <<" << std::endl;
+                    if (distXZ < 2.0f && distYZ < 6.0f * 0.8f) {
+                        std::cout << ">> RING " << ri << " PASSED! <<" << std::endl;
                     }
                 }
             }
@@ -1554,6 +1623,10 @@ int main()
     splineBollard.cleanup();
     ruledCanopy.cleanup();
     ringCheckpoint.cleanup();
+    hexRing.cleanup();
+    triRing.cleanup();
+    squareRing.cleanup();
+    pentRing.cleanup();
     eiffelLeg.cleanup();
     eiffelUpperShaft.cleanup();
     eiffelTopBulb.cleanup();
