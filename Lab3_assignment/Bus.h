@@ -51,6 +51,12 @@ public:
     glm::vec3 hoverPadColor = glm::vec3(0.3f, 0.6f, 0.9f);
     glm::vec3 hoverGlowColor = glm::vec3(0.4f, 0.7f, 1.0f);
 
+    // Wing configuration
+    bool wingsEnabled = true;
+    glm::vec3 wingColor = glm::vec3(0.85f, 0.85f, 0.88f);
+    glm::vec3 wingEdgeColor = glm::vec3(0.4f, 0.4f, 0.45f);
+    glm::vec3 wingFairingColor = glm::vec3(0.88f, 0.88f, 0.90f);
+
     // ==================== TEXTURE IDs (set from assignment.cpp) ====================
     unsigned int texFloor = 0;
     unsigned int texCarpet = 0;
@@ -100,6 +106,7 @@ public:
         drawInterior(shader, parentTransform);
         drawJetEngine(shader, parentTransform);
         drawHoverSkirts(shader, parentTransform);
+        if (wingsEnabled) drawDeltaWings(shader, parentTransform);
     }
 
     void drawExterior(const Shader& shader, glm::mat4 parent) {
@@ -581,9 +588,181 @@ public:
         glDisable(GL_BLEND);
     }
 
+    // ==================== DELTA WINGS (Space Shuttle Inspired) ====================
+    // Parametric wing using many overlapping thin slabs for a smooth, continuous shape.
+    // Gentle swept-back delta — wings extend mostly sideways with slight backward angle.
+    void drawDeltaWings(const Shader& shader, glm::mat4 parent) {
+        glm::mat4 model;
+
+        // === Wing configuration ===
+        const float wingRootX    = 1.5f;     // Where wing root starts (rear half)
+        const float wingY        = 0.15f;    // Vertical center on body
+        const float bodyHalfZ    = 1.5f;     // Bus body half-width
+        const float totalSpan    = 3.0f;     // Total outward distance per wing
+        const float rootChord    = 4.0f;     // Chord length at root (longest)
+        const float tipChord     = 0.3f;     // Chord length at tip
+        const float maxThick     = 0.26f;    // Max thickness at root
+        const float tipThick     = 0.04f;    // Thickness at tip
+        const float dihedralDeg  = 3.0f;     // Very slight upward tilt (nearly flat)
+        const int   NUM_SLABS    = 40;       // Many slabs for smooth surface
+
+        // Gentle sweep: wings go mostly outward with moderate backward angle
+        const float kinkFrac = 0.30f;        // Inner/outer transition at 30% span
+
+        // Inner sweep: tan(~50°) ≈ 1.2 — moderate backward angle
+        const float innerSweepRate = 1.2f;
+        // Outer sweep: tan(~22°) ≈ 0.4 — gentle backward angle
+        const float outerSweepRate = 0.4f;
+
+        for (int side = 0; side < 2; side++) {
+            float zSign = (side == 0) ? -1.0f : 1.0f;
+
+            for (int i = 0; i < NUM_SLABS; i++) {
+                float t = (float)i / (float)(NUM_SLABS - 1);
+
+                // --- Span position (how far outward from body) ---
+                float spanPos = t * totalSpan;
+
+                // --- Leading edge sweep (double-delta, gentle) ---
+                float leadingSweepBack;
+                if (t <= kinkFrac) {
+                    leadingSweepBack = spanPos * innerSweepRate;
+                } else {
+                    float kinkSpan = kinkFrac * totalSpan;
+                    float kinkSweep = kinkSpan * innerSweepRate;
+                    float outerSpan = spanPos - kinkSpan;
+                    leadingSweepBack = kinkSweep + outerSpan * outerSweepRate;
+                }
+
+                // --- Chord interpolation (smooth cubic taper) ---
+                float tSmooth = t * t * (3.0f - 2.0f * t);
+                float chord = rootChord * (1.0f - tSmooth) + tipChord * tSmooth;
+
+                // --- Thickness (airfoil-like: ramps up then tapers) ---
+                float thickProfile;
+                if (t < 0.25f) {
+                    float r = t / 0.25f;
+                    thickProfile = 0.75f + 0.25f * r;
+                } else {
+                    float r = (t - 0.25f) / 0.75f;
+                    thickProfile = 1.0f - r * r * 0.9f;
+                }
+                float thick = maxThick * thickProfile * (1.0f - t * 0.4f)
+                            + tipThick * t;
+
+                // --- Slab width: overlap adjacent slabs for seamless look ---
+                float slabSpan = totalSpan / (float)NUM_SLABS;
+                // 30% overlap between slabs eliminates visible gaps
+                float spanWidth = slabSpan * 1.35f;
+
+                // --- Position ---
+                float cz = zSign * (bodyHalfZ + spanPos);
+                float leadX = wingRootX + leadingSweepBack;
+                float cx = leadX + chord * 0.5f;
+
+                // Very gentle dihedral (nearly horizontal)
+                float yRaise = spanPos * tan(glm::radians(dihedralDeg));
+
+                // --- Main wing slab ---
+                model = parent * glm::translate(glm::mat4(1.0f),
+                    glm::vec3(cx, wingY + yRaise, cz));
+                model = glm::rotate(model, glm::radians(zSign * dihedralDeg),
+                    glm::vec3(1.0f, 0.0f, 0.0f));
+                model = glm::scale(model, glm::vec3(chord, thick, spanWidth));
+                glm::vec3 slabColor = wingColor * (1.0f - t * 0.1f);
+                cube.draw(shader, model, slabColor);
+
+                // --- Leading edge accent (every 4th slab) ---
+                if (i % 4 == 0) {
+                    model = parent * glm::translate(glm::mat4(1.0f),
+                        glm::vec3(leadX, wingY + yRaise + 0.003f, cz));
+                    model = glm::rotate(model, glm::radians(zSign * dihedralDeg),
+                        glm::vec3(1.0f, 0.0f, 0.0f));
+                    model = glm::scale(model,
+                        glm::vec3(0.05f, thick + 0.015f, spanWidth + 0.005f));
+                    cube.draw(shader, model, wingEdgeColor);
+                }
+            }
+
+            // --- Root fairing (blends wing into body) ---
+            for (int f = 0; f < 5; f++) {
+                float frac = (float)f / 4.0f;
+                float fX = wingRootX + 0.3f + frac * 3.0f;
+                float fZ = zSign * (bodyHalfZ + 0.01f);
+                float fWidth = 0.40f - frac * 0.06f;
+                float fHeight = 0.45f - frac * 0.10f;
+
+                model = parent * glm::translate(glm::mat4(1.0f),
+                    glm::vec3(fX, wingY, fZ));
+                model = glm::scale(model, glm::vec3(0.9f, fHeight, fWidth));
+                cube.draw(shader, model, wingFairingColor);
+            }
+
+            // Fairing upper blend
+            model = parent * glm::translate(glm::mat4(1.0f),
+                glm::vec3(wingRootX + 2.0f, wingY + 0.18f, zSign * (bodyHalfZ + 0.01f)));
+            model = glm::scale(model, glm::vec3(3.5f, 0.10f, 0.28f));
+            cube.draw(shader, model, bodyColor);
+
+            // Fairing lower blend
+            model = parent * glm::translate(glm::mat4(1.0f),
+                glm::vec3(wingRootX + 2.0f, wingY - 0.18f, zSign * (bodyHalfZ + 0.01f)));
+            model = glm::scale(model, glm::vec3(3.5f, 0.10f, 0.28f));
+            cube.draw(shader, model, bodyColor);
+
+            // --- Trailing edge strip ---
+            for (int i = 0; i < NUM_SLABS; i += 4) {
+                float t = (float)i / (float)(NUM_SLABS - 1);
+                float spanPos = t * totalSpan;
+                float leadingSweepBack;
+                if (t <= kinkFrac) {
+                    leadingSweepBack = spanPos * innerSweepRate;
+                } else {
+                    float kinkSpan = kinkFrac * totalSpan;
+                    leadingSweepBack = kinkSpan * innerSweepRate
+                        + (spanPos - kinkSpan) * outerSweepRate;
+                }
+                float tSmooth = t * t * (3.0f - 2.0f * t);
+                float chord = rootChord * (1.0f - tSmooth) + tipChord * tSmooth;
+                float trailX = wingRootX + leadingSweepBack + chord;
+                float cz = zSign * (bodyHalfZ + spanPos);
+                float yRaise = spanPos * tan(glm::radians(dihedralDeg));
+                float slabSpan = totalSpan / (float)NUM_SLABS * 4.2f;
+
+                model = parent * glm::translate(glm::mat4(1.0f),
+                    glm::vec3(trailX, wingY + yRaise, cz));
+                model = glm::rotate(model, glm::radians(zSign * dihedralDeg),
+                    glm::vec3(1.0f, 0.0f, 0.0f));
+                model = glm::scale(model, glm::vec3(0.04f, 0.05f, slabSpan));
+                cube.draw(shader, model, wingEdgeColor * 0.8f);
+            }
+
+            // --- Wingtip cap ---
+            float tipSpan = totalSpan;
+            float tipYRaise = tipSpan * tan(glm::radians(dihedralDeg));
+            float tipLeadSweep;
+            {
+                float kinkSpan = kinkFrac * totalSpan;
+                tipLeadSweep = kinkSpan * innerSweepRate
+                    + (tipSpan - kinkSpan) * outerSweepRate;
+            }
+            float tipCX = wingRootX + tipLeadSweep + tipChord * 0.5f;
+            float tipCZ = zSign * (bodyHalfZ + tipSpan);
+
+            model = parent * glm::translate(glm::mat4(1.0f),
+                glm::vec3(tipCX, wingY + tipYRaise, tipCZ + zSign * 0.03f));
+            model = glm::scale(model, glm::vec3(0.25f, tipThick * 0.4f, 0.05f));
+            cylinder.draw(shader, model, wingColor * 0.9f);
+        }
+    }
+
     // ==================== INTERACTIVE METHODS ====================
     void toggleFrontDoor() {
         frontDoorAngle = (frontDoorAngle < 45.0f) ? 90.0f : 0.0f;
+    }
+
+    void toggleWings() {
+        wingsEnabled = !wingsEnabled;
     }
 
     void toggleMiddleDoor() {

@@ -1732,6 +1732,8 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
         case GLFW_KEY_B: bus.toggleFrontDoor(); break;
         case GLFW_KEY_G: fanSpinning = !fanSpinning; break;
         case GLFW_KEY_L: bus.toggleLight(); break;
+        case GLFW_KEY_N: bus.toggleWings();
+            std::cout << "Wings: " << (bus.wingsEnabled ? "ON" : "OFF") << std::endl; break;
         case GLFW_KEY_K:
             isDrivingMode = !isDrivingMode;
             if (!isDrivingMode) {
