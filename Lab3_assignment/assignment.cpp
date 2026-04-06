@@ -110,21 +110,16 @@ Cone sceneCone;
 
 // Bezier/Spline surface of revolution objects
 BezierSurface bezierVase;         // Decorative vase along the road
-BezierSurface bezierWaterTower;   // Water tower (large bulb on top)
+// [REMOVED] BezierSurface bezierWaterTower;
 SplineSurface splineLamp;         // Street lamp post with smooth curves
-SplineSurface splineBollard;      // Rounded bollard/post
+// [REMOVED] SplineSurface splineBollard;
 RuledSurface  ruledCanopy;        // Canopy/awning between two curves
 
 // Ring checkpoints the hover vehicle flies through
 Torus ringCheckpoint;
 PolygonRing hexRing, triRing, squareRing, pentRing;
 
-// Eiffel Tower components (built from Bezier curves + ruled surfaces)
-BezierSurface eiffelLeg;          // One curved leg (Bezier revolution - tapered)
-SplineSurface eiffelUpperShaft;   // Upper narrow shaft (spline revolution)
-BezierSurface eiffelTopBulb;      // Top observation dome (Bezier revolution)
-RuledSurface  eiffelArch[4];      // Decorative arches between legs (ruled surfaces)
-RuledSurface  eiffelPlatform;     // Observation platform (ruled surface)
+// [REMOVED] Eiffel Tower components
 
 // ============================================================================
 // COLLISION SYSTEM - AABB-based
@@ -145,8 +140,7 @@ struct RingCheckpoint {
 };
 std::vector<RingCheckpoint> ringPositions;
 
-// Tower position
-glm::vec3 towerPosition = glm::vec3(80.0f, 0.0f, -40.0f);
+// [REMOVED] towerPosition
 
 int sceneTextureMode = 1;
 
@@ -604,17 +598,7 @@ int main()
         bezierVase.init(vaseProfile, 20, 24);
     }
 
-    // Water tower profile: thin stem, big bulb on top (Bezier)
-    {
-        std::vector<glm::vec2> towerProfile = {
-            glm::vec2(0.3f, 0.0f),   // narrow base
-            glm::vec2(0.3f, 0.5f),   // stem
-            glm::vec2(1.2f, 0.6f),   // bulge out
-            glm::vec2(1.0f, 0.85f),  // round top
-            glm::vec2(0.0f, 1.0f)    // apex
-        };
-        bezierWaterTower.init(towerProfile, 25, 30);
-    }
+    // [REMOVED] Water tower init
 
     // Street lamp profile (Catmull-Rom spline - smooth through all points)
     {
@@ -629,17 +613,7 @@ int main()
         splineLamp.init(lampProfile, 8, 20);
     }
 
-    // Bollard (short rounded post) - Spline
-    {
-        std::vector<glm::vec2> bollardProfile = {
-            glm::vec2(0.4f, 0.0f),
-            glm::vec2(0.5f, 0.2f),
-            glm::vec2(0.45f, 0.5f),
-            glm::vec2(0.3f, 0.8f),
-            glm::vec2(0.0f, 1.0f)
-        };
-        splineBollard.init(bollardProfile, 6, 16);
-    }
+    // [REMOVED] Bollard init
 
     // Ruled surface canopy (between two curved rails)
     {
@@ -673,87 +647,7 @@ int main()
     pentRing.init(5, 6.0f, 0.5f, 10, 3);   // Pentagon
     std::cout << " pent [OK]" << std::endl;
 
-    // Eiffel Tower construction from curves
-    {
-        // Leg profile: wide curved base that tapers inward (Bezier revolution, quarter-profile)
-        std::vector<glm::vec2> legProfile = {
-            glm::vec2(1.2f, 0.0f),    // wide foot
-            glm::vec2(1.0f, 1.0f),    // lower curve
-            glm::vec2(0.5f, 3.0f),    // mid taper
-            glm::vec2(0.3f, 5.0f)     // top of leg (meets shaft)
-        };
-        eiffelLeg.init(legProfile, 15, 12);
-
-        // Upper shaft: narrow column from 1st platform to top (Spline revolution)
-        std::vector<glm::vec2> shaftProfile = {
-            glm::vec2(0.8f, 0.0f),    // base (at 1st platform)
-            glm::vec2(0.6f, 2.0f),    // slight taper
-            glm::vec2(0.45f, 5.0f),   // 2nd platform level
-            glm::vec2(0.3f, 8.0f),    // narrowing
-            glm::vec2(0.2f, 11.0f),   // near top
-            glm::vec2(0.15f, 13.0f),  // spire base
-            glm::vec2(0.05f, 15.0f)   // spire tip
-        };
-        eiffelUpperShaft.init(shaftProfile, 8, 20);
-
-        // Top observation bulb (small dome at top)
-        std::vector<glm::vec2> topProfile = {
-            glm::vec2(0.0f, 0.0f),
-            glm::vec2(0.4f, 0.1f),
-            glm::vec2(0.35f, 0.4f),
-            glm::vec2(0.0f, 0.6f)
-        };
-        eiffelTopBulb.init(topProfile, 10, 16);
-
-        // Arches: curved ruled surfaces connecting each pair of legs
-        // Arch 0: front arch (between front-left and front-right legs)
-        float archH = 4.0f;   // arch height
-        float legSpread = 6.0f; // distance of legs from center at base
-        float legTopSpread = 1.5f; // where legs meet the shaft
-
-        // 4 arches, one per face (front, back, left, right)
-        // Each arch is a ruled surface between a top rail and bottom curved rail
-        for (int a = 0; a < 4; a++) {
-            float angle = a * 90.0f;
-            float rad = glm::radians(angle);
-            float cosA = cos(rad), sinA = sin(rad);
-
-            // Bottom curve: arcs from one leg base across to the other
-            std::vector<glm::vec3> bottomCurve = {
-                glm::vec3(-legSpread * sinA + legSpread * cosA, 0.0f,
-                           legSpread * cosA + legSpread * sinA),
-                glm::vec3(-legSpread * 0.3f * sinA, archH * 0.5f,
-                           legSpread * 0.3f * cosA),
-                glm::vec3(legSpread * sinA + legSpread * cosA, 0.0f,
-                          -legSpread * cosA + legSpread * sinA)
-            };
-
-            // Top rail: flat line at the 1st platform level
-            std::vector<glm::vec3> topCurve = {
-                glm::vec3(-legTopSpread * sinA + legTopSpread * cosA, archH + 1.0f,
-                           legTopSpread * cosA + legTopSpread * sinA),
-                glm::vec3(0.0f, archH + 1.5f, 0.0f),
-                glm::vec3(legTopSpread * sinA + legTopSpread * cosA, archH + 1.0f,
-                          -legTopSpread * cosA + legTopSpread * sinA)
-            };
-            eiffelArch[a].init(topCurve, bottomCurve, 15, 5);
-        }
-
-        // Platform: flat ruled surface at the 1st observation deck
-        {
-            std::vector<glm::vec3> platTop = {
-                glm::vec3(-3.0f, 0.0f, -3.0f),
-                glm::vec3(0.0f, 0.2f, -3.0f),
-                glm::vec3(3.0f, 0.0f, -3.0f)
-            };
-            std::vector<glm::vec3> platBot = {
-                glm::vec3(-3.0f, 0.0f, 3.0f),
-                glm::vec3(0.0f, 0.2f, 3.0f),
-                glm::vec3(3.0f, 0.0f, 3.0f)
-            };
-            eiffelPlatform.init(platTop, platBot, 10, 10);
-        }
-    }
+    // [REMOVED] Eiffel Tower init
 
     // Ring positions are now generated procedurally in the render loop (infinite)
 
@@ -1417,24 +1311,7 @@ int main()
                 }
             }
 
-            // --- BEZIER WATER TOWERS (infinite, scaled up) ---
-            {
-                float wtSpacing = 250.0f;
-                int wtStart = (int)floor((busX - 500.0f) / wtSpacing);
-                int wtEnd = (int)ceil((busX + 500.0f) / wtSpacing);
-                for (int i = wtStart; i <= wtEnd; i++) {
-                    float wtX = i * wtSpacing + 80.0f;
-                    int wtSeed = i * 7919;
-                    float wtZ = ((cityHash(wtSeed, 0) % 2 == 0) ? 1.0f : -1.0f) *
-                                (30.0f + cityRand(wtSeed, 1) * 15.0f);
-                    glm::vec3 wtp(wtX, 0.0f, wtZ);
-                    glm::mat4 model = glm::translate(glm::mat4(1.0f), wtp);
-                    model = glm::scale(model, glm::vec3(5.0f, 18.0f, 5.0f));
-                    bezierWaterTower.draw(ourShader, model, glm::vec3(0.5f, 0.5f, 0.6f));
-                    addBuildingCollision(wtp + glm::vec3(0, 9, 0),
-                                         glm::vec3(3.5f, 9.0f, 3.5f));
-                }
-            }
+            // [REMOVED] Water towers
 
             // --- SPLINE STREET LAMPS along road (infinite, scaled up) ---
             {
@@ -1465,24 +1342,7 @@ int main()
                 }
             }
 
-            // --- SPLINE BOLLARDS at road intersections (infinite, scaled up) ---
-            {
-                float bollardSpacing = 80.0f;
-                int bStart = (int)floor((busX - 400.0f) / bollardSpacing);
-                int bEnd = (int)ceil((busX + 400.0f) / bollardSpacing);
-                for (int i = bStart; i <= bEnd; i++) {
-                    float bx = i * bollardSpacing;
-                    for (int side = -1; side <= 1; side += 2) {
-                        float bz = side * (ROAD_WIDTH * 0.5f + 0.5f);
-                        glm::mat4 model = glm::translate(glm::mat4(1.0f),
-                            glm::vec3(bx, 0.0f, bz));
-                        model = glm::scale(model, glm::vec3(0.8f, 1.6f, 0.8f));
-                        splineBollard.draw(ourShader, model, glm::vec3(0.8f, 0.7f, 0.1f));
-                        addBuildingCollision(glm::vec3(bx, 0.8f, bz),
-                                             glm::vec3(0.5f, 0.8f, 0.5f));
-                    }
-                }
-            }
+            // [REMOVED] Bollards
 
             // --- RULED SURFACE CANOPIES (bus stop shelters, infinite, scaled up) ---
             {
@@ -1508,122 +1368,7 @@ int main()
                 }
             }
 
-            // --- EIFFEL TOWER (scaled up) ---
-            {
-                glm::vec3 tp = towerPosition;
-                glm::vec3 eiffelColor(0.45f, 0.38f, 0.30f);
-                float legSpread = 10.0f;
-                float legHeight = 8.0f;
-                float platformY = 9.0f;
-                float shaftScale = 4.0f;
-
-                // Apply stone texture to all Eiffel parts
-                if (texStoneWall != 0) {
-                    ourShader.setInt("textureMode", 3);
-                    ourShader.setVec2("texScale", glm::vec2(2.0f, 4.0f));
-                    glActiveTexture(GL_TEXTURE0);
-                    glBindTexture(GL_TEXTURE_2D, texStoneWall);
-                    ourShader.setInt("textureSampler", 0);
-                }
-
-                // 4 curved legs at corners (Bezier surface of revolution)
-                float legOffsets[4][2] = {
-                    {-legSpread, -legSpread},
-                    { legSpread, -legSpread},
-                    { legSpread,  legSpread},
-                    {-legSpread,  legSpread}
-                };
-                float legAngles[4] = { 45.0f, -45.0f, -135.0f, 135.0f };
-
-                for (int l = 0; l < 4; l++) {
-                    glm::mat4 model = glm::translate(glm::mat4(1.0f),
-                        tp + glm::vec3(legOffsets[l][0], 0.0f, legOffsets[l][1]));
-                    // Tilt each leg inward toward center
-                    float tiltAngle = 15.0f;
-                    float tiltRad = glm::radians(legAngles[l]);
-                    model = glm::rotate(model, glm::radians(tiltAngle) * cos(tiltRad), glm::vec3(0, 0, 1));
-                    model = glm::rotate(model, glm::radians(tiltAngle) * sin(tiltRad), glm::vec3(1, 0, 0));
-                    model = glm::scale(model, glm::vec3(1.5f, legHeight, 1.5f));
-                    eiffelLeg.draw(ourShader, model, eiffelColor);
-
-                    // Collision for each leg
-                    addBuildingCollision(
-                        tp + glm::vec3(legOffsets[l][0], legHeight * 0.5f, legOffsets[l][1]),
-                        glm::vec3(1.5f, legHeight * 0.5f, 1.5f));
-                }
-
-                // 4 decorative arches between legs (Ruled surfaces)
-                for (int a = 0; a < 4; a++) {
-                    glm::mat4 model = glm::translate(glm::mat4(1.0f), tp);
-                    eiffelArch[a].draw(ourShader, model, glm::vec3(0.5f, 0.42f, 0.35f));
-                }
-
-                // 1st observation platform (Ruled surface - flat deck)
-                {
-                    glm::mat4 model = glm::translate(glm::mat4(1.0f),
-                        tp + glm::vec3(0.0f, platformY, 0.0f));
-                    model = glm::scale(model, glm::vec3(1.5f, 1.0f, 1.5f));
-                    eiffelPlatform.draw(ourShader, model, glm::vec3(0.4f, 0.35f, 0.28f));
-                }
-
-                // Platform railing (thin cubes around edge)
-                for (int s = 0; s < 4; s++) {
-                    float angle = s * 90.0f;
-                    float r = glm::radians(angle);
-                    glm::vec3 railPos = tp + glm::vec3(cos(r) * 4.2f, platformY + 0.5f, sin(r) * 4.2f);
-                    glm::mat4 railing = glm::translate(glm::mat4(1.0f), railPos);
-                    railing = glm::rotate(railing, r, glm::vec3(0, 1, 0));
-                    railing = glm::scale(railing, glm::vec3(8.0f, 0.3f, 0.1f));
-                    bus.cube.draw(ourShader, railing, glm::vec3(0.35f, 0.3f, 0.25f));
-                }
-
-                // Upper shaft (Spline surface of revolution)
-                {
-                    glm::mat4 model = glm::translate(glm::mat4(1.0f),
-                        tp + glm::vec3(0.0f, platformY, 0.0f));
-                    model = glm::scale(model, glm::vec3(shaftScale, shaftScale, shaftScale));
-                    eiffelUpperShaft.draw(ourShader, model, eiffelColor);
-                }
-
-                // 2nd observation deck (smaller platform)
-                {
-                    float deck2Y = platformY + 5.0f * shaftScale;
-                    glm::mat4 deck2 = glm::translate(glm::mat4(1.0f),
-                        tp + glm::vec3(0.0f, deck2Y, 0.0f));
-                    deck2 = glm::scale(deck2, glm::vec3(2.5f, 0.15f, 2.5f));
-                    bus.cube.draw(ourShader, deck2, glm::vec3(0.4f, 0.35f, 0.28f));
-                }
-
-                // Top observation bulb (Bezier revolution)
-                {
-                    float topY = platformY + 14.0f * shaftScale;
-                    glm::mat4 model = glm::translate(glm::mat4(1.0f),
-                        tp + glm::vec3(0.0f, topY, 0.0f));
-                    model = glm::scale(model, glm::vec3(1.5f, 2.0f, 1.5f));
-                    eiffelTopBulb.draw(ourShader, model, glm::vec3(0.5f, 0.45f, 0.35f));
-                }
-
-                ourShader.setInt("textureMode", 0);
-                ourShader.setVec2("texScale", glm::vec2(1.0f, 1.0f));
-
-                // Central collision for the whole tower
-                float totalHeight = platformY + 15.0f * shaftScale;
-                addBuildingCollision(tp + glm::vec3(0, totalHeight * 0.5f, 0),
-                                     glm::vec3(2.0f, totalHeight * 0.5f, 2.0f));
-
-                // Beacon light on top
-                if (emissiveLightOn) {
-                    ourShader.setBool("isEmissive", true);
-                    float beacon = 0.5f + 0.5f * sin(time * 3.0f);
-                    float topY = platformY + 15.0f * shaftScale + 1.0f;
-                    glm::mat4 beaconModel = glm::translate(glm::mat4(1.0f),
-                        tp + glm::vec3(0.0f, topY, 0.0f));
-                    beaconModel = glm::scale(beaconModel, glm::vec3(1.0f, 1.0f, 1.0f));
-                    sceneSphere.draw(ourShader, beaconModel,
-                        glm::vec3(1.0f, 0.3f, 0.1f) * beacon);
-                    ourShader.setBool("isEmissive", false);
-                }
-            }
+            // [REMOVED] Eiffel Tower
 
             // --- RING CHECKPOINTS (infinite, sparse, varied shapes) ---
             {
@@ -1713,20 +1458,16 @@ int main()
     sceneSphere.cleanup();
     sceneCone.cleanup();
     bezierVase.cleanup();
-    bezierWaterTower.cleanup();
+    // [REMOVED] bezierWaterTower.cleanup();
     splineLamp.cleanup();
-    splineBollard.cleanup();
+    // [REMOVED] splineBollard.cleanup();
     ruledCanopy.cleanup();
     ringCheckpoint.cleanup();
     hexRing.cleanup();
     triRing.cleanup();
     squareRing.cleanup();
     pentRing.cleanup();
-    eiffelLeg.cleanup();
-    eiffelUpperShaft.cleanup();
-    eiffelTopBulb.cleanup();
-    for (int i = 0; i < 4; i++) eiffelArch[i].cleanup();
-    eiffelPlatform.cleanup();
+    // [REMOVED] Eiffel tower cleanup
     if (skyboxVAO) { glDeleteVertexArrays(1, &skyboxVAO); glDeleteBuffers(1, &skyboxVBO); }
     unsigned int allTex[] = { texFloor, texCarpet, texFabric, texWall, texDashboard, texBusBody, texSphere, texCone,
                               texStoneWall, texRoofTile, texBrickWall };
