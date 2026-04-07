@@ -55,8 +55,27 @@ bool fanSpinning = false;
 
 // Fractal collectible score system
 #include <unordered_set>
+#include <cstdio>
+#include <cstring>
+#include <cstdint>
 int  fractalScore = 0;
 std::unordered_set<int> collectedSponges;
+
+// =====================================================================
+// GAMIFICATION — score, ring/cube checkpoints, HUD, hit feedback
+// =====================================================================
+int   gameScore = 0;
+float scoreFlashTimer = 0.0f;     // counts down; while > 0 the HUD "jumps"
+bool  scoreFlashIsHit = false;    // true => last change was a loss (red)
+std::unordered_set<int> passedRings;     // ring indices already scored
+float buildingHitCooldown = 0.0f;        // prevents spamming -2 every frame
+Cube  hudCube;                           // single quad/cube reused for HUD glyph pixels
+
+static inline void awardScore(int delta) {
+    gameScore += delta;
+    scoreFlashTimer = 0.45f;
+    scoreFlashIsHit = (delta < 0);
+}
 
 // ============================================================================
 // DRIVING SIMULATION
@@ -1000,6 +1019,88 @@ void drawMengerSponge(const Shader& sh, const glm::mat4& worldTransform,
 }
 
 // ============================================================================
+// HUD — tiny 3x5 bitmap font, drawn with a screen-space cube primitive
+// ============================================================================
+// Bit layout: row 0 = top row, bit index = row*3 + col, col 0 = leftmost.
+static uint16_t hudGlyph(char c) {
+    switch (c) {
+        case '0': return 0b111'101'101'101'111;
+        case '1': return 0b010'110'010'010'111;
+        case '2': return 0b111'001'111'100'111;
+        case '3': return 0b111'001'111'001'111;
+        case '4': return 0b101'101'111'001'001;
+        case '5': return 0b111'100'111'001'111;
+        case '6': return 0b111'100'111'101'111;
+        case '7': return 0b111'001'010'010'010;
+        case '8': return 0b111'101'111'101'111;
+        case '9': return 0b111'101'111'001'111;
+        case 'S': return 0b111'100'111'001'111;
+        case 'C': return 0b111'100'100'100'111;
+        case 'O': return 0b111'101'101'101'111;
+        case 'R': return 0b110'101'110'101'101;
+        case 'E': return 0b111'100'110'100'111;
+        case ':': return 0b000'010'000'010'000;
+        case '-': return 0b000'000'111'000'000;
+        default:  return 0;
+    }
+}
+
+void drawHUD(Shader& shader) {
+    if (!hudCube.initialized) hudCube.init();
+
+    glDisable(GL_DEPTH_TEST);
+
+    shader.use();
+    glm::mat4 ortho = glm::ortho(0.0f, (float)SCR_WIDTH, 0.0f, (float)SCR_HEIGHT, -10.0f, 10.0f);
+    shader.setMat4("projection", ortho);
+    shader.setMat4("view", glm::mat4(1.0f));
+    shader.setInt("textureMode", 0);
+    shader.setBool("isEmissive", true);
+    shader.setFloat("alpha", 1.0f);
+
+    char buf[32];
+    snprintf(buf, sizeof(buf), "SCORE:%d", gameScore);
+
+    bool flashing = scoreFlashTimer > 0.0f;
+    glm::vec3 color = (flashing && scoreFlashIsHit)
+                          ? glm::vec3(1.0f, 0.1f, 0.1f)
+                          : glm::vec3(1.0f, 0.92f, 0.05f);
+    float jump = 1.0f + (flashing ? scoreFlashTimer * 1.4f : 0.0f);   // peak ~1.6
+    float bounce = flashing ? sinf(scoreFlashTimer * 18.0f) * 6.0f : 0.0f;
+
+    float pixelSize = 7.0f * jump;
+    float charW = 3.0f * pixelSize;
+    float charH = 5.0f * pixelSize;
+    float spacing = pixelSize;
+    int n = (int)strlen(buf);
+    float totalW = n * (charW + spacing) - spacing;
+
+    float startX = (float)SCR_WIDTH - totalW - 24.0f;
+    float startY = (float)SCR_HEIGHT - charH - 24.0f - bounce;
+
+    for (int ci = 0; ci < n; ci++) {
+        uint16_t g = hudGlyph(buf[ci]);
+        float gx = startX + ci * (charW + spacing);
+        for (int row = 0; row < 5; row++) {
+            for (int col = 0; col < 3; col++) {
+                if (g & (1 << (14 - (row * 3 + col)))) {
+                    float px = gx + col * pixelSize;
+                    float py = startY + (4 - row) * pixelSize;
+                    glm::mat4 m = glm::translate(glm::mat4(1.0f),
+                                                 glm::vec3(px + pixelSize * 0.5f,
+                                                           py + pixelSize * 0.5f, 0.0f));
+                    m = glm::scale(m, glm::vec3(pixelSize * 0.5f));
+                    hudCube.draw(shader, m, color);
+                }
+            }
+        }
+    }
+
+    shader.setBool("isEmissive", false);
+    glEnable(GL_DEPTH_TEST);
+}
+
+// ============================================================================
 // MAIN
 // ============================================================================
 int main()
@@ -1277,6 +1378,10 @@ int main()
         processInput(window);
         bus.updateFan(deltaTime, fanSpinning);
         bus.updateJetFlame(deltaTime);
+
+        // Tick gamification timers
+        if (scoreFlashTimer    > 0.0f) scoreFlashTimer    = std::max(0.0f, scoreFlashTimer    - deltaTime);
+        if (buildingHitCooldown> 0.0f) buildingHitCooldown= std::max(0.0f, buildingHitCooldown- deltaTime);
 
         // Clear collision boxes - rebuilt each frame from visible objects
         collisionBoxes.clear();
@@ -1909,8 +2014,9 @@ int main()
                         if (fabs(d.x) < reach && fabs(d.y) < reach && fabs(d.z) < reach) {
                             collectedSponges.insert(si);
                             fractalScore += 100;
-                            std::cout << ">>> FRACTAL COLLECTED! +100 (Total: "
-                                      << fractalScore << ") <<<" << std::endl;
+                            awardScore(15);
+                            std::cout << ">>> CUBE COLLECTED! +15 (Score: "
+                                      << gameScore << ") <<<" << std::endl;
                         }
                     }
                 }
@@ -1947,8 +2053,11 @@ int main()
                         glm::vec3(0.5f, 1.0f, 0.3f),  // lime (square)
                         glm::vec3(0.8f, 0.4f, 1.0f),  // purple (pentagon)
                     };
+                    bool ringPassed = passedRings.count(ri) > 0;
                     float pulse = 0.7f + 0.3f * sin(time * 4.0f + ri);
-                    glm::vec3 ringColor = ringColors[shapeType] * pulse;
+                    glm::vec3 ringColor = ringPassed
+                        ? glm::vec3(0.35f, 0.35f, 0.38f)   // ash/grey once collected
+                        : ringColors[shapeType] * pulse;
 
                     ourShader.setBool("isEmissive", true);
                     ourShader.setFloat("alpha", 0.85f);
@@ -1970,8 +2079,13 @@ int main()
                     float distXZ = fabs(busCenter.x - ringPos.x);
                     float distYZ = sqrt((busCenter.y - ringPos.y) * (busCenter.y - ringPos.y) +
                                         (busCenter.z - ringPos.z) * (busCenter.z - ringPos.z));
-                    if (distXZ < 2.0f && distYZ < 6.0f * 0.8f) {
-                        std::cout << ">> RING " << ri << " PASSED! <<" << std::endl;
+                    if (!ringPassed && distXZ < 2.0f && distYZ < 6.0f * 0.8f) {
+                        passedRings.insert(ri);
+                        // Circle ring (shapeType 0) = "ring" = +5; polygon rings (hex etc.) = +3
+                        int pts = (shapeType == 0) ? 5 : 3;
+                        awardScore(pts);
+                        std::cout << ">> RING " << ri << " PASSED! +" << pts
+                                  << " (Score: " << gameScore << ") <<" << std::endl;
                     }
                 }
             }
@@ -1995,6 +2109,9 @@ int main()
             glBindVertexArray(0);
             glDepthFunc(GL_LESS);  // Restore default
         }
+
+        // ==================== HUD (score) ====================
+        drawHUD(ourShader);
 
         glfwSwapBuffers(window);
         glfwPollEvents();
@@ -2154,6 +2271,11 @@ void processInput(GLFWwindow* window) {
         } else {
             // Hit something - stop and bounce back slightly
             busSpeed *= -0.3f;
+            if (buildingHitCooldown <= 0.0f) {
+                awardScore(-2);
+                buildingHitCooldown = 0.6f;
+                std::cout << ">> HIT! -2 (Score: " << gameScore << ") <<" << std::endl;
+            }
         }
 
         bus.steeringAngle = busSteerAngle;
