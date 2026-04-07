@@ -53,6 +53,11 @@ float lastFrame = 0.0f;
 Bus bus;
 bool fanSpinning = false;
 
+// Fractal collectible score system
+#include <unordered_set>
+int  fractalScore = 0;
+std::unordered_set<int> collectedSponges;
+
 // ============================================================================
 // DRIVING SIMULATION
 // ============================================================================
@@ -100,6 +105,9 @@ unsigned int texStoneWall = 0, texRoofTile = 0, texBrickWall = 0;
 
 // Carpet textures for city ground
 unsigned int texCarpetTile = 0, texEarthTone = 0;
+
+// Bark + leaf textures for the fractal forest
+unsigned int texBark = 0, texLeaf = 0;
 
 // Skybox
 unsigned int skyboxVAO = 0, skyboxVBO = 0;
@@ -382,6 +390,39 @@ unsigned int loadTexture(const char* path, GLenum wrapMode, GLenum filterMode) {
     return textureID;
 }
 
+// ----------------------------------------------------------------------------
+// loadTextureRGBA - keeps the alpha channel (for leaf cutout PNGs).
+// ----------------------------------------------------------------------------
+unsigned int loadTextureRGBA(const char* path, GLenum wrapMode, GLenum filterMode) {
+    std::cout << "  Loading: " << path << "..." << std::flush;
+    {
+        std::ifstream testFile(path, std::ios::binary);
+        if (!testFile.good()) { std::cout << " [--] not found" << std::endl; return 0; }
+    }
+    int width = 0, height = 0, channels = 0;
+    stbi_set_flip_vertically_on_load(true);
+    unsigned char* data = stbi_load(path, &width, &height, &channels, 4);
+    if (!data) {
+        std::cout << " [FAIL] " << stbi_failure_reason() << std::endl;
+        return 0;
+    }
+    std::cout << " " << width << "x" << height << " RGBA..." << std::flush;
+
+    unsigned int textureID;
+    glGenTextures(1, &textureID);
+    glBindTexture(GL_TEXTURE_2D, textureID);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
+    glGenerateMipmap(GL_TEXTURE_2D);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, wrapMode);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, wrapMode);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filterMode);
+    stbi_image_free(data);
+    std::cout << " [OK]" << std::endl;
+    return textureID;
+}
+
 // ============================================================================
 // CUBEMAP LOADING FROM HORIZONTAL CROSS LAYOUT
 // ============================================================================
@@ -546,6 +587,419 @@ void printStatus() {
 }
 
 // ============================================================================
+// MENGER SPONGE FRACTAL
+// A 3D self-similar fractal: at each iteration, a cube is divided into 27
+// sub-cubes and the 7 "axis-cross" cubes (face-centers + true center) are
+// removed, leaving 20. Recursion is BAKED ONCE at startup into a list of
+// (offset, size) child cubes — drawing is then a flat loop with no recursion
+// per frame, so it stays fast even with many sponges visible.
+// ============================================================================
+struct MengerCube {
+    glm::vec3 offset;   // center in unit-cube local space [-0.5, 0.5]
+    float     size;     // side length (fraction of unit cube)
+};
+std::vector<MengerCube> mengerCubes;
+
+// GPU-instanced rendering of the Menger sponge.
+// One draw call per sponge instead of 8000 — massive speedup.
+unsigned int mengerVAO    = 0;
+unsigned int mengerInstVBO = 0;
+
+static bool mengerKept(int x, int y, int z) {
+    // Keep a 3x3x3 sub-cell unless it lies on the axis cross
+    // (center of a face, edge-middle on axis, or the dead center).
+    int centers = (x == 1 ? 1 : 0) + (y == 1 ? 1 : 0) + (z == 1 ? 1 : 0);
+    return centers <= 1;
+}
+
+void buildMengerSponge(int iterations) {
+    mengerCubes.clear();
+    // Start from a single unit cube
+    std::vector<MengerCube> current;
+    current.push_back({ glm::vec3(0.0f), 1.0f });
+
+    for (int it = 0; it < iterations; it++) {
+        std::vector<MengerCube> next;
+        next.reserve(current.size() * 20);
+        for (const auto& c : current) {
+            float s = c.size / 3.0f;
+            for (int x = 0; x < 3; x++)
+            for (int y = 0; y < 3; y++)
+            for (int z = 0; z < 3; z++) {
+                if (!mengerKept(x, y, z)) continue;
+                glm::vec3 off = c.offset + glm::vec3((x - 1) * s, (y - 1) * s, (z - 1) * s);
+                next.push_back({ off, s });
+            }
+        }
+        current.swap(next);
+    }
+    mengerCubes = std::move(current);
+}
+
+// Build a dedicated instanced VAO that wires up the existing cube VBO plus
+// a per-instance buffer holding (offset.xyz, size.w) for every sub-cube.
+// Must be called AFTER buildMengerSponge() and AFTER bus.cube.init().
+void initMengerInstancing() {
+    // Pack mengerCubes into vec4 instance data
+    std::vector<glm::vec4> instData;
+    instData.reserve(mengerCubes.size());
+    for (const auto& c : mengerCubes)
+        instData.push_back(glm::vec4(c.offset, c.size));
+
+    glGenVertexArrays(1, &mengerVAO);
+    glBindVertexArray(mengerVAO);
+
+    // Re-bind the cube's existing vertex buffer (pos/normal/tex)
+    glBindBuffer(GL_ARRAY_BUFFER, bus.cube.VBO);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float)));
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(6 * sizeof(float)));
+    glEnableVertexAttribArray(2);
+
+    // Per-instance buffer at location 3, divisor 1
+    glGenBuffers(1, &mengerInstVBO);
+    glBindBuffer(GL_ARRAY_BUFFER, mengerInstVBO);
+    glBufferData(GL_ARRAY_BUFFER, instData.size() * sizeof(glm::vec4),
+                 instData.data(), GL_STATIC_DRAW);
+    glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, sizeof(glm::vec4), (void*)0);
+    glEnableVertexAttribArray(3);
+    glVertexAttribDivisor(3, 1);  // advance once per instance
+
+    glBindVertexArray(0);
+
+    // Make sure ALL non-instanced draws see identity for attrib 3.
+    // Bound VAOs without attrib 3 enabled will use this generic constant.
+    glVertexAttrib4f(3, 0.0f, 0.0f, 0.0f, 1.0f);
+}
+
+// ============================================================================
+// FRACTAL FOREST - Recursive textured fractal trees, fully GPU-instanced.
+//
+// At startup we recursively bake a small "forest tile" worth of trees into
+// two big lists of per-instance mat4 transforms:
+//   * branchInstances - one transform per branch cylinder
+//   * leafInstances   - one transform per leaf cube
+// At render time the forest is drawn as repeating tiles around the bus, and
+// each tile costs only ONE instanced draw call for branches + ONE for leaves.
+// Branches are textured with stone_wall (bark) and leaves with the grass
+// texture (foliage), so they're properly texture-mapped.
+// ============================================================================
+struct ForestData {
+    std::vector<glm::mat4> branchInstances;
+    std::vector<glm::mat4> leafInstances;
+    unsigned int branchVAO = 0, branchInstVBO = 0;
+    unsigned int leafVAO   = 0, leafInstVBO   = 0;
+    unsigned int leafQuadVBO   = 0;   // crossed billboard geometry (12 verts)
+    unsigned int branchGeomVBO = 0;   // low-poly flat-shaded ragged trunk
+    int branchVertCount = 0;
+};
+ForestData forest;
+
+// Build a low-poly, flat-shaded, radius-jittered cylinder used ONLY by the
+// forest branches. Few sides + flat normals + asymmetric radii give the
+// ragged, rough look of a real bark surface (no smooth highlights).
+void buildForestBranchGeometry() {
+    const int SIDES = 9;             // few sides -> visible facets
+    float radii[SIDES];
+    for (int i = 0; i < SIDES; i++) {
+        // Asymmetric per-side radii in [0.82 .. 1.18] for the ragged silhouette
+        radii[i] = 0.82f + 0.36f * ((cityHash(i + 1, 991) % 1000) / 1000.0f);
+    }
+
+    std::vector<float> v;
+    v.reserve(SIDES * 6 * 8);
+    for (int i = 0; i < SIDES; i++) {
+        float a0 = (2.0f * (float)M_PI * i)       / SIDES;
+        float a1 = (2.0f * (float)M_PI * (i + 1)) / SIDES;
+        float r0 = radii[i];
+        float r1 = radii[(i + 1) % SIDES];
+        float x0 = cosf(a0) * r0, z0 = sinf(a0) * r0;
+        float x1 = cosf(a1) * r1, z1 = sinf(a1) * r1;
+
+        // Flat face normal (average of the two corner radial directions)
+        float midA = (a0 + a1) * 0.5f;
+        float nx = cosf(midA), nz = sinf(midA);
+
+        float u0 = (float)i / SIDES;
+        float u1 = (float)(i + 1) / SIDES;
+
+        float quad[] = {
+            x0, -0.5f, z0,  nx, 0.0f, nz,  u0, 0.0f,
+            x1, -0.5f, z1,  nx, 0.0f, nz,  u1, 0.0f,
+            x1,  0.5f, z1,  nx, 0.0f, nz,  u1, 1.0f,
+            x1,  0.5f, z1,  nx, 0.0f, nz,  u1, 1.0f,
+            x0,  0.5f, z0,  nx, 0.0f, nz,  u0, 1.0f,
+            x0, -0.5f, z0,  nx, 0.0f, nz,  u0, 0.0f,
+        };
+        v.insert(v.end(), quad, quad + 48);
+    }
+    forest.branchVertCount = (int)(v.size() / 8);
+
+    glGenBuffers(1, &forest.branchGeomVBO);
+    glBindBuffer(GL_ARRAY_BUFFER, forest.branchGeomVBO);
+    glBufferData(GL_ARRAY_BUFFER, v.size() * sizeof(float), v.data(), GL_STATIC_DRAW);
+}
+const float FOREST_TILE_LEN = 200.0f;
+
+static void bakeFractalBranch(std::vector<glm::mat4>& branches,
+                              std::vector<glm::mat4>& leaves,
+                              const glm::mat4& base,
+                              float length, float radius,
+                              int depth, unsigned int seed)
+{
+    // Branch transform: translate up half-length, scale (radius, length, radius)
+    glm::mat4 m = glm::translate(base, glm::vec3(0.0f, length * 0.5f, 0.0f));
+    m = glm::scale(m, glm::vec3(radius, length, radius));
+    branches.push_back(m);
+
+    glm::mat4 tip = glm::translate(base, glm::vec3(0.0f, length, 0.0f));
+
+    if (depth <= 0) {
+        // Leaf cluster: many small textured cubes packed around the tip.
+        // More leaves = denser, more realistic foliage silhouette.
+        const int LEAVES_PER_TIP = 12;
+        for (int k = 0; k < LEAVES_PER_TIP; k++) {
+            unsigned int ks = seed * 131u + (unsigned int)(k * 7919u);
+            float ox = ((cityHash(ks, 1) % 1000) / 1000.0f - 0.5f) * length * 1.6f;
+            float oy = ((cityHash(ks, 2) % 1000) / 1000.0f) * length * 1.4f;
+            float oz = ((cityHash(ks, 3) % 1000) / 1000.0f - 0.5f) * length * 1.6f;
+            float scl = length * (0.45f + 0.35f * ((cityHash(ks, 4) % 1000) / 1000.0f));
+            float ry  = ((cityHash(ks, 5) % 1000) / 1000.0f) * 360.0f;
+            float rx  = ((cityHash(ks, 6) % 1000) / 1000.0f) * 60.0f;
+
+            glm::mat4 lm = glm::translate(tip, glm::vec3(ox, oy, oz));
+            lm = glm::rotate(lm, glm::radians(ry), glm::vec3(0, 1, 0));
+            lm = glm::rotate(lm, glm::radians(rx), glm::vec3(1, 0, 0));
+            lm = glm::scale(lm, glm::vec3(scl, scl * 0.6f, scl));
+            leaves.push_back(lm);
+        }
+        return;
+    }
+
+    const int N = 3;
+    for (int i = 0; i < N; i++) {
+        unsigned int cs = seed * 1664525u + (unsigned int)(i * 1013904223u + depth * 2654435761u);
+        float r1 = (cityHash(cs, 1) % 1000) / 1000.0f;
+        float r2 = (cityHash(cs, 2) % 1000) / 1000.0f;
+        float r3 = (cityHash(cs, 3) % 1000) / 1000.0f;
+
+        float yaw   = (i * (360.0f / N)) + (r1 - 0.5f) * 35.0f;
+        float pitch = 22.0f + r2 * 22.0f;
+        float lenScale = 0.68f + r3 * 0.10f;
+        float radScale = 0.62f + r3 * 0.08f;
+
+        glm::mat4 child = glm::rotate(tip,   glm::radians(yaw),   glm::vec3(0, 1, 0));
+        child           = glm::rotate(child, glm::radians(pitch), glm::vec3(1, 0, 0));
+
+        bakeFractalBranch(branches, leaves, child,
+                          length * lenScale, radius * radScale,
+                          depth - 1, cs);
+    }
+}
+
+void buildForest() {
+    forest.branchInstances.clear();
+    forest.leafInstances.clear();
+
+    // A "planned forest": grid of trees in 3 staggered rows on each side of
+    // the road, with per-tree jitter so it doesn't look mechanical.
+    const int TREES_PER_ROW = 12;        // along X
+    const int ROWS_PER_SIDE = 3;         // depth into the grass field
+    const float bandStart = BUILDING_ZONE_END + 4.0f;
+    const float bandEnd   = GRASS_WIDTH - 6.0f;
+    const float bandDepth = bandEnd - bandStart;
+
+    for (int side = -1; side <= 1; side += 2) {
+        for (int row = 0; row < ROWS_PER_SIDE; row++) {
+            for (int i = 0; i < TREES_PER_ROW; i++) {
+                unsigned int s = (unsigned int)(((i * 31 + row * 7919) * 2 + (side + 1)) * 374761393u + 7u);
+                float r1 = (cityHash(s, 11) % 1000) / 1000.0f;
+                float r2 = (cityHash(s, 12) % 1000) / 1000.0f;
+                float r3 = (cityHash(s, 13) % 1000) / 1000.0f;
+                float r4 = (cityHash(s, 14) % 1000) / 1000.0f;
+
+                // Stagger every other row by half-spacing for a planted look
+                float xStep   = FOREST_TILE_LEN / TREES_PER_ROW;
+                float xOffset = (row % 2 == 0) ? 0.0f : xStep * 0.5f;
+                float tx = (i + 0.15f + r1 * 0.7f) * xStep + xOffset;
+
+                // Each row sits in its own depth slice of the grass band
+                float rowFrac = (row + 0.2f + r2 * 0.6f) / ROWS_PER_SIDE;
+                float tz = side * (bandStart + rowFrac * bandDepth);
+
+                float scale = 0.9f + r3 * 0.6f;
+                float trunkLen = 3.0f * scale;
+                float trunkRad = 0.36f * scale;
+
+                glm::mat4 base = glm::translate(glm::mat4(1.0f), glm::vec3(tx, 0.0f, tz));
+                base = glm::rotate(base, glm::radians((r1 - 0.5f) * 10.0f), glm::vec3(1, 0, 0));
+                base = glm::rotate(base, glm::radians((r4 - 0.5f) * 10.0f), glm::vec3(0, 0, 1));
+                base = glm::rotate(base, glm::radians(r2 * 360.0f),         glm::vec3(0, 1, 0));
+
+                // Depth 5 -> 364 branches per tree
+                bakeFractalBranch(forest.branchInstances, forest.leafInstances,
+                                  base, trunkLen, trunkRad, 5, s);
+            }
+        }
+    }
+}
+
+// Helper: wire 4 vec4 attribs (locations 4-7) as a per-instance mat4
+static void setupInstanceMat4Attribs() {
+    for (int i = 0; i < 4; i++) {
+        glVertexAttribPointer(4 + i, 4, GL_FLOAT, GL_FALSE,
+                              sizeof(glm::mat4),
+                              (void*)(i * sizeof(glm::vec4)));
+        glEnableVertexAttribArray(4 + i);
+        glVertexAttribDivisor(4 + i, 1);
+    }
+}
+
+void initForestInstancing() {
+    // ---- Branch VAO: ragged low-poly VBO + branch instance buffer ----
+    buildForestBranchGeometry();
+    glGenVertexArrays(1, &forest.branchVAO);
+    glBindVertexArray(forest.branchVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, forest.branchGeomVBO);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float)));
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(6 * sizeof(float)));
+    glEnableVertexAttribArray(2);
+
+    glGenBuffers(1, &forest.branchInstVBO);
+    glBindBuffer(GL_ARRAY_BUFFER, forest.branchInstVBO);
+    glBufferData(GL_ARRAY_BUFFER,
+                 forest.branchInstances.size() * sizeof(glm::mat4),
+                 forest.branchInstances.data(), GL_STATIC_DRAW);
+    setupInstanceMat4Attribs();
+    glBindVertexArray(0);
+
+    // ---- Leaf VAO: crossed-billboard quad VBO + leaf instance buffer ----
+    // Two perpendicular quads (XY plane + YZ plane), 6 verts each = 12 verts.
+    // Far cheaper than a 36-vert cube and looks fluffier with a leaf cutout.
+    float leafQuadVerts[] = {
+        // pos              normal       uv
+        // Quad 1 (XY plane, normal +Z)
+        -0.5f,-0.5f, 0.0f,  0,0,1,  0,0,
+         0.5f,-0.5f, 0.0f,  0,0,1,  1,0,
+         0.5f, 0.5f, 0.0f,  0,0,1,  1,1,
+         0.5f, 0.5f, 0.0f,  0,0,1,  1,1,
+        -0.5f, 0.5f, 0.0f,  0,0,1,  0,1,
+        -0.5f,-0.5f, 0.0f,  0,0,1,  0,0,
+        // Quad 2 (YZ plane, normal +X)
+         0.0f,-0.5f,-0.5f,  1,0,0,  0,0,
+         0.0f,-0.5f, 0.5f,  1,0,0,  1,0,
+         0.0f, 0.5f, 0.5f,  1,0,0,  1,1,
+         0.0f, 0.5f, 0.5f,  1,0,0,  1,1,
+         0.0f, 0.5f,-0.5f,  1,0,0,  0,1,
+         0.0f,-0.5f,-0.5f,  1,0,0,  0,0,
+    };
+    glGenBuffers(1, &forest.leafQuadVBO);
+    glBindBuffer(GL_ARRAY_BUFFER, forest.leafQuadVBO);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(leafQuadVerts), leafQuadVerts, GL_STATIC_DRAW);
+
+    glGenVertexArrays(1, &forest.leafVAO);
+    glBindVertexArray(forest.leafVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, forest.leafQuadVBO);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float)));
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(6 * sizeof(float)));
+    glEnableVertexAttribArray(2);
+
+    glGenBuffers(1, &forest.leafInstVBO);
+    glBindBuffer(GL_ARRAY_BUFFER, forest.leafInstVBO);
+    glBufferData(GL_ARRAY_BUFFER,
+                 forest.leafInstances.size() * sizeof(glm::mat4),
+                 forest.leafInstances.data(), GL_STATIC_DRAW);
+    setupInstanceMat4Attribs();
+    glBindVertexArray(0);
+
+    // Identity defaults for instance mat4 attribs (used by NON-instanced draws)
+    glVertexAttrib4f(4, 1.0f, 0.0f, 0.0f, 0.0f);
+    glVertexAttrib4f(5, 0.0f, 1.0f, 0.0f, 0.0f);
+    glVertexAttrib4f(6, 0.0f, 0.0f, 1.0f, 0.0f);
+    glVertexAttrib4f(7, 0.0f, 0.0f, 0.0f, 1.0f);
+}
+
+// Draw the forest as repeating tiles around the bus.
+// Branches: stone_wall texture (bark). Leaves: grass texture (foliage).
+// Cost = 2 draw calls per visible tile.
+void drawForest(const Shader& sh, float busX) {
+    const float visibleRange = 400.0f;
+    int tStart = (int)floor((busX - visibleRange) / FOREST_TILE_LEN);
+    int tEnd   = (int)ceil ((busX + visibleRange) / FOREST_TILE_LEN);
+
+    // ---- BRANCHES (textured bark) ----
+    if (texBark != 0) {
+        sh.setInt("textureMode", 3);
+        sh.setVec2("texScale", glm::vec2(4.0f, 6.0f));
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, texBark);
+        sh.setInt("textureSampler", 0);
+    } else {
+        sh.setInt("textureMode", 0);
+    }
+    sh.setVec3("objectColor", glm::vec3(0.45f, 0.30f, 0.18f));
+    glBindVertexArray(forest.branchVAO);
+    for (int ti = tStart; ti <= tEnd; ti++) {
+        glm::mat4 model = glm::translate(glm::mat4(1.0f),
+                                         glm::vec3(ti * FOREST_TILE_LEN, 0.0f, 0.0f));
+        sh.setMat4("model", model);
+        glDrawArraysInstanced(GL_TRIANGLES, 0,
+                              forest.branchVertCount,
+                              (GLsizei)forest.branchInstances.size());
+    }
+
+    // ---- LEAVES (alpha-cutout textured billboards) ----
+    if (texLeaf != 0) {
+        sh.setInt("textureMode", 1);          // pure texture path
+        sh.setBool("alphaTest", true);        // discard transparent pixels
+        sh.setVec2("texScale", glm::vec2(1.0f, 1.0f));
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, texLeaf);
+        sh.setInt("textureSampler", 0);
+        // Slight green tint multiplier
+        sh.setVec3("objectColor", glm::vec3(1.0f, 1.0f, 1.0f));
+        glBindVertexArray(forest.leafVAO);
+        for (int ti = tStart; ti <= tEnd; ti++) {
+            glm::mat4 model = glm::translate(glm::mat4(1.0f),
+                                             glm::vec3(ti * FOREST_TILE_LEN, 0.0f, 0.0f));
+            sh.setMat4("model", model);
+            // 12 verts per leaf (crossed billboard quads)
+            glDrawArraysInstanced(GL_TRIANGLES, 0, 12,
+                                  (GLsizei)forest.leafInstances.size());
+        }
+        sh.setBool("alphaTest", false);       // restore for the rest of the scene
+    }
+
+    glBindVertexArray(0);
+    sh.setInt("textureMode", 0);
+    sh.setVec2("texScale", glm::vec2(1.0f, 1.0f));
+}
+
+// Draw one entire Menger sponge in a SINGLE instanced draw call.
+void drawMengerSponge(const Shader& sh, const glm::mat4& worldTransform,
+                      glm::vec3 baseColor, bool emissive)
+{
+    if (emissive) sh.setBool("isEmissive", true);
+    sh.setVec3("objectColor", baseColor);
+    sh.setMat4("model", worldTransform);
+
+    glBindVertexArray(mengerVAO);
+    glDrawArraysInstanced(GL_TRIANGLES, 0, bus.cube.vertexCount,
+                          (GLsizei)mengerCubes.size());
+    glBindVertexArray(0);
+
+    if (emissive) sh.setBool("isEmissive", false);
+}
+
+// ============================================================================
 // MAIN
 // ============================================================================
 int main()
@@ -635,6 +1089,19 @@ int main()
     // Ring checkpoint (large torus for flying through)
     // mainRadius=6 gives 12-unit diameter hole, tubeRadius=0.6 makes it clearly visible
     ringCheckpoint.init(6.0f, 0.6f, 36, 18);
+
+    // Pre-bake the Menger sponge fractal (iteration 2 = 400 child cubes per sponge)
+    std::cout << "  Building Menger sponge fractal..." << std::flush;
+    buildMengerSponge(4);
+    initMengerInstancing();
+    std::cout << " done (" << mengerCubes.size() << " cubes, instanced)" << std::endl;
+
+    // Pre-bake the fractal forest tile (recursive trees, GPU-instanced)
+    std::cout << "  Building fractal forest..." << std::flush;
+    buildForest();
+    initForestInstancing();
+    std::cout << " done (" << forest.branchInstances.size() << " branches, "
+              << forest.leafInstances.size() << " leaves)" << std::endl;
 
     // Polygon ring shapes for variety
     std::cout << "  Initializing polygon rings..." << std::flush;
@@ -730,6 +1197,12 @@ int main()
     // Carpet textures for urban city ground
     texCarpetTile = loadTexture("textures/commercial-carpet-tiles.jpg", GL_REPEAT, GL_LINEAR);
     texEarthTone  = loadTexture("textures/earth-tone-tiles.png",         GL_REPEAT, GL_LINEAR);
+
+    // Forest textures: real bark (RGB) + leaf cutout (RGBA with alpha)
+    texBark = loadTexture("textures/tree_bark.jpg",   GL_REPEAT, GL_LINEAR);
+    if (texBark == 0)
+        texBark = loadTexture("textures/tree_bark_2.jpg", GL_REPEAT, GL_LINEAR);
+    texLeaf = loadTextureRGBA("textures/leaf.png", GL_CLAMP_TO_EDGE, GL_LINEAR);
 
     // Skybox cubemap
     cubemapTexture = loadCubemapFromFaces();
@@ -884,6 +1357,7 @@ int main()
         ourShader.setBool("diffuseOn",     diffuseOn);
         ourShader.setBool("specularOn",    specularOn);
         ourShader.setBool("isEmissive", false);
+        ourShader.setBool("alphaTest", false);
         ourShader.setFloat("alpha", 1.0f);
 
         // View & Projection
@@ -1369,6 +1843,78 @@ int main()
             }
 
             // [REMOVED] Eiffel Tower
+
+            // --- FRACTAL FOREST (textured trees, fully instanced) ---
+            drawForest(ourShader, busX);
+
+            // --- MENGER SPONGE FRACTAL COLLECTIBLES (high-altitude, iter 3) ---
+            // 3-iteration Menger sponges floating HIGH above the road and rings.
+            // Each is a 20^3 = 8000-cube self-similar fractal, baked once at
+            // startup. Sparse spacing keeps only ~3 in the visible window so
+            // total cube draws stay manageable. Flying THROUGH one collects it
+            // and awards bonus points (worth more than ring checkpoints).
+            {
+                float spongeSpacing = 260.0f;  // sparse: ~3 visible at a time
+                int sStart = (int)floor((busX - 400.0f) / spongeSpacing);
+                int sEnd   = (int)ceil ((busX + 400.0f) / spongeSpacing);
+                for (int si = sStart; si <= sEnd; si++) {
+                    // Position HIGH above the road, centered over the road on X axis
+                    float sx = si * spongeSpacing + 90.0f;
+
+                    unsigned int sseed = (unsigned int)(si * 374761393);
+                    float r1 = (cityHash(sseed, 1) % 1000) / 1000.0f;
+                    float r2 = (cityHash(sseed, 2) % 1000) / 1000.0f;
+                    float r3 = (cityHash(sseed, 3) % 1000) / 1000.0f;
+
+                    // Centered above the road, slight Z wobble (player must steer)
+                    float sz = (r3 - 0.5f) * 6.0f;
+                    // High altitude band 22..36, varying so player must climb/dive
+                    float baseY = 22.0f + r1 * 14.0f;
+                    float bobY  = sin(time * 1.0f + si * 0.7f) * 1.2f;
+                    float sy    = baseY + bobY;
+
+                    float spongeSize = 4.0f + r2 * 1.5f;     // 4..5.5 units
+                    // Continuous slow tumble on TWO axes for visual complexity
+                    float rotY = time * (20.0f + r1 * 15.0f);
+                    float rotX = time * (12.0f + r2 * 10.0f);
+
+                    bool collected = collectedSponges.count(si) > 0;
+
+                    glm::mat4 m = glm::translate(glm::mat4(1.0f), glm::vec3(sx, sy, sz));
+                    m = glm::rotate(m, glm::radians(rotY), glm::vec3(0, 1, 0));
+                    m = glm::rotate(m, glm::radians(rotX), glm::vec3(1, 0, 0));
+                    m = glm::scale(m, glm::vec3(spongeSize));
+
+                    // Bright pulsing color; collected ones go dim grey
+                    glm::vec3 palette[] = {
+                        glm::vec3(0.20f, 0.85f, 1.00f),  // cyan
+                        glm::vec3(1.00f, 0.40f, 0.85f),  // magenta
+                        glm::vec3(0.55f, 1.00f, 0.35f),  // lime
+                        glm::vec3(1.00f, 0.75f, 0.20f),  // amber
+                        glm::vec3(0.70f, 0.45f, 1.00f),  // violet
+                    };
+                    int colorIdx = (((si % 5) + 5) % 5);
+                    float pulse = 0.75f + 0.25f * sin(time * 3.0f + si);
+                    glm::vec3 col = collected ? glm::vec3(0.25f, 0.25f, 0.25f)
+                                              : palette[colorIdx] * pulse;
+
+                    drawMengerSponge(ourShader, m, col, emissiveLightOn && !collected);
+
+                    // --- Pass-through detection (no solid collision) ---
+                    if (!collected) {
+                        glm::vec3 busCenter = busPosition;
+                        busCenter.y += HOVER_HEIGHT + bus.hoverBobOffset + busAltitude;
+                        glm::vec3 d = busCenter - glm::vec3(sx, sy, sz);
+                        float reach = spongeSize * 0.9f;  // generous hit volume
+                        if (fabs(d.x) < reach && fabs(d.y) < reach && fabs(d.z) < reach) {
+                            collectedSponges.insert(si);
+                            fractalScore += 100;
+                            std::cout << ">>> FRACTAL COLLECTED! +100 (Total: "
+                                      << fractalScore << ") <<<" << std::endl;
+                        }
+                    }
+                }
+            }
 
             // --- RING CHECKPOINTS (infinite, sparse, varied shapes) ---
             {

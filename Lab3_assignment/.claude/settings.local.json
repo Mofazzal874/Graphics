@@ -14,7 +14,9 @@
       "Bash(cmd.exe /c \"dir /s /b \\\\\"C:\\\\\\\\Program Files\\\\\\\\Microsoft Visual Studio\\\\\\\\2022\\\\\\\\MSBuild.exe\\\\\"\")",
       "Bash(powershell.exe -Command \"Get-ChildItem 'C:\\\\\\\\Program Files\\\\\\\\Microsoft Visual Studio\\\\\\\\2022' -Recurse -Filter 'MSBuild.exe' -ErrorAction SilentlyContinue | Select-Object -First 5 -ExpandProperty FullName\")",
       "Bash(powershell.exe -Command \"Get-ChildItem 'C:\\\\\\\\Program Files\\\\\\\\Microsoft Visual Studio' -Directory\")",
-      "Bash(powershell.exe -Command \"Get-ChildItem 'C:\\\\\\\\Program Files\\\\\\\\Microsoft Visual Studio\\\\\\\\2022' -Directory\")"
+      "Bash(powershell.exe -Command \"Get-ChildItem 'C:\\\\\\\\Program Files\\\\\\\\Microsoft Visual Studio\\\\\\\\2022' -Directory\")",
+      "Bash(cmd.exe /c \"msbuild Lab3_assignment.sln /p:Configuration=Debug /p:Platform=x64 /v:minimal /m\")",
+      "Bash(\"/c/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe\" \"d:/Academics/Graphics/Lab3_assignment/Lab3_assignment.sln\" /p:Configuration=Debug /p:Platform=x64 /v:minimal /m)"
     ]
   }
 }

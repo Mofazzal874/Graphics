@@ -2,6 +2,15 @@
 layout (location = 0) in vec3 aPos;
 layout (location = 1) in vec3 aNormal;
 layout (location = 2) in vec2 aTexCoord;
+// Per-instance data: xyz = offset, w = scale.
+// When unbound it defaults to (0,0,0,1) -> identity (aPos*1 + 0 = aPos).
+layout (location = 3) in vec4 aInst;
+// Per-instance model matrix (4 vec4 attribs forming a mat4 by columns).
+// Defaults set via glVertexAttrib4f produce the identity matrix when unbound.
+layout (location = 4) in vec4 aInstM0;
+layout (location = 5) in vec4 aInstM1;
+layout (location = 6) in vec4 aInstM2;
+layout (location = 7) in vec4 aInstM3;
 
 out vec3 FragPos;
 out vec3 Normal;
@@ -111,9 +120,14 @@ vec3 CalcSpotLightV(SpotLight light, vec3 normal, vec3 fragPos, vec3 viewDir) {
 }
 
 void main() {
-    FragPos = vec3(model * vec4(aPos, 1.0));
+    // Apply per-instance offset/scale (identity for normal draws)
+    vec3 localPos = aPos * aInst.w + aInst.xyz;
+    // Apply per-instance model matrix (identity for normal draws)
+    mat4 instModel = mat4(aInstM0, aInstM1, aInstM2, aInstM3);
+    vec4 instWorld = instModel * vec4(localPos, 1.0);
+    FragPos = vec3(model * instWorld);
     WorldPos = FragPos;
-    Normal = mat3(transpose(inverse(model))) * aNormal;
+    Normal = mat3(model) * mat3(instModel) * aNormal;
     TexCoord = aTexCoord * texScale;
     gl_Position = projection * view * vec4(FragPos, 1.0);
 

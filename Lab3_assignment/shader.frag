@@ -65,6 +65,11 @@ uniform bool specularOn;
 uniform bool isEmissive;
 uniform float alpha;
 
+// Alpha-test cutout mode (for leaf billboards). When true, fragments whose
+// texture alpha is below the threshold are discarded, and lighting is made
+// two-sided so back faces of crossed billboards stay lit.
+uniform bool alphaTest;
+
 // ==================== TEXTURE UNIFORMS ====================
 uniform sampler2D textureSampler;
 uniform sampler2D textureSampler2;  // Second texture for blending
@@ -142,7 +147,13 @@ void main() {
     
     if (textureMode == 1) {
         // Mode 1: Pure texture — texture replaces object color entirely
-        texColor = texture(textureSampler, TexCoord).rgb;
+        vec4 texSample = texture(textureSampler, TexCoord);
+        if (alphaTest) {
+            if (texSample.a < 0.5) discard;
+            // Two-sided lighting for billboards
+            if (!gl_FrontFacing) norm = -norm;
+        }
+        texColor = texSample.rgb * objectColor;  // optional tint
         // Compute lighting with texture as material
         vec3 result = vec3(0.0);
         if (dirLightOn)
