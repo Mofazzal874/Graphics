@@ -309,45 +309,50 @@ public:
         model = glm::scale(model, glm::vec3(0.3f, 0.4f, 0.8f));
         drawTextured(shader, model, glm::vec3(0.1f, 0.1f, 0.1f), texDashboard, 1, cube);
 
-        // Driver seat
-        model = parent * glm::translate(glm::mat4(1.0f), glm::vec3(-3.8f, seatY + 0.1f, -0.6f));
-        model = glm::scale(model, glm::vec3(0.9f, 0.25f, 0.8f));
+        // Driver seat — positioned near front windshield, facing forward (-X)
+        float dSeatX = -3.6f;
+        float dSeatZ = -0.6f;
+
+        // Driver seat cushion
+        model = parent * glm::translate(glm::mat4(1.0f), glm::vec3(dSeatX, seatY + 0.1f, dSeatZ));
+        model = glm::scale(model, glm::vec3(0.8f, 0.25f, 0.9f));
         drawTextured(shader, model, cushionColor, texFabric, 3, cube);
 
-        // Driver seat back
-        model = parent * glm::translate(glm::mat4(1.0f), glm::vec3(-3.8f, seatY + 0.65f, -1.0f));
-        model = glm::scale(model, glm::vec3(0.85f, 1.0f, 0.15f));
+        // Driver seat back (behind driver → +X side since driver faces -X)
+        model = parent * glm::translate(glm::mat4(1.0f), glm::vec3(dSeatX + 0.4f, seatY + 0.65f, dSeatZ));
+        model = glm::scale(model, glm::vec3(0.15f, 1.0f, 0.85f));
         drawTextured(shader, model, fabricColor, texFabric, 3, cube);
 
-        // Driver seat legs
+        // Driver seat legs (spread along Z, the seat's width axis)
         for (int s = -1; s <= 1; s += 2) {
-            model = parent * glm::translate(glm::mat4(1.0f), glm::vec3(-3.8f + s * 0.35f, seatY - 0.3f, -0.6f));
+            model = parent * glm::translate(glm::mat4(1.0f), glm::vec3(dSeatX, seatY - 0.3f, dSeatZ + s * 0.35f));
             model = glm::scale(model, glm::vec3(0.07f, 0.45f, 0.07f));
             cube.draw(shader, model, glm::vec3(0.25f, 0.25f, 0.25f));
         }
 
-        // Driver seat headrest
-        model = parent * glm::translate(glm::mat4(1.0f), glm::vec3(-3.8f, seatY + 1.35f, -1.0f));
-        model = glm::scale(model, glm::vec3(0.45f, 0.28f, 0.13f));
+        // Driver seat headrest (on back of seat)
+        model = parent * glm::translate(glm::mat4(1.0f), glm::vec3(dSeatX + 0.4f, seatY + 1.35f, dSeatZ));
+        model = glm::scale(model, glm::vec3(0.13f, 0.28f, 0.45f));
         drawTextured(shader, model, fabricColor, texFabric, 3, cube);
 
         // ==================== STEERING WHEEL ====================
-        // Column — tilted toward driver (toward -X and up)
-        model = parent * glm::translate(glm::mat4(1.0f), glm::vec3(-4.1f, 0.55f, -0.6f));
-        model = glm::rotate(model, glm::radians(35.0f), glm::vec3(0.0f, 0.0f, 1.0f));  // tilt forward
-        model = glm::scale(model, glm::vec3(0.06f, 0.45f, 0.06f));
+        // Column — rises from dashboard toward the driver, tilted back (+X direction)
+        model = parent * glm::translate(glm::mat4(1.0f), glm::vec3(-4.15f, 0.55f, dSeatZ));
+        model = glm::rotate(model, glm::radians(-25.0f), glm::vec3(0.0f, 0.0f, 1.0f));  // tilt top toward +X (driver)
+        model = glm::scale(model, glm::vec3(0.06f, 0.5f, 0.06f));
         cylinder.draw(shader, model, steeringColor);
 
-        // Torus ring — faces the driver (lies in XZ plane, rotated so ring is upright toward driver)
-        model = parent * glm::translate(glm::mat4(1.0f), glm::vec3(-3.85f, 0.9f, -0.6f));
-        model = glm::rotate(model, glm::radians(55.0f), glm::vec3(0.0f, 0.0f, 1.0f));  // match column tilt
-        model = glm::rotate(model, glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f));  // face driver
-        model = glm::scale(model, glm::vec3(0.65f, 0.65f, 0.65f));
+        // Steering wheel ring — plane perpendicular to the column, facing the driver (normal ≈ -X)
+        // Default torus lies in XZ plane (normal = +Y). Rotate 90° around Z → normal becomes +X,
+        // then tilt back ~25° to match the column.
+        glm::mat4 wheelPos = parent * glm::translate(glm::mat4(1.0f), glm::vec3(-4.0f, 0.95f, dSeatZ));
+        wheelPos = glm::rotate(wheelPos, glm::radians(-25.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+        model = glm::rotate(wheelPos, glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+        model = glm::scale(model, glm::vec3(0.55f, 0.55f, 0.55f));
         torus.draw(shader, model, steeringColor);
 
         // Center hub
-        model = parent * glm::translate(glm::mat4(1.0f), glm::vec3(-3.85f, 0.9f, -0.6f));
-        model = glm::scale(model, glm::vec3(0.08f, 0.08f, 0.08f));
+        model = glm::scale(wheelPos, glm::vec3(0.1f, 0.1f, 0.1f));
         cylinder.draw(shader, model, steeringColor);
 
         // ==================== CEILING FANS ====================

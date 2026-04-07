@@ -1376,7 +1376,7 @@ int main()
         lastFrame = currentFrame;
 
         processInput(window);
-        bus.updateFan(deltaTime, fanSpinning);
+        bus.updateFan(deltaTime, fanSpinning || cameraMode == 2);
         bus.updateJetFlame(deltaTime);
 
         // Tick gamification timers
@@ -1442,8 +1442,16 @@ int main()
         ourShader.setFloat("pointLights[3].linear",    0.09f);
         ourShader.setFloat("pointLights[3].quadratic", 0.032f);
 
+        // IMPORTANT: getViewMatrix() updates cameraPos for chase/interior modes,
+        // so call it before setting any uniforms that depend on the camera.
+        float aspect_ = (float)fbWidth / (float)fbHeight;
+        glm::mat4 projection = glm::perspective(glm::radians(cameraFOV), aspect_, 0.1f, 1000.0f);
+        glm::mat4 view = getViewMatrix();
+
+        // Spotlight points along the actual view direction (works in all camera modes)
+        glm::vec3 spotDir = glm::normalize(glm::vec3(glm::inverse(view) * glm::vec4(0, 0, -1, 0)));
         ourShader.setVec3("spotLight.position", cameraPos);
-        ourShader.setVec3("spotLight.direction", getCameraFront());
+        ourShader.setVec3("spotLight.direction", spotDir);
         ourShader.setVec3("spotLight.ambient",  0.0f, 0.0f, 0.0f);
         ourShader.setVec3("spotLight.diffuse",  1.0f, 1.0f, 1.0f);
         ourShader.setVec3("spotLight.specular", 1.0f, 1.0f, 1.0f);
@@ -1465,10 +1473,7 @@ int main()
         ourShader.setBool("alphaTest", false);
         ourShader.setFloat("alpha", 1.0f);
 
-        // View & Projection
-        float aspect = (float)fbWidth / (float)fbHeight;
-        glm::mat4 projection = glm::perspective(glm::radians(cameraFOV), aspect, 0.1f, 1000.0f);
-        glm::mat4 view = getViewMatrix();
+        // View & Projection (already computed above before light uniforms)
         ourShader.setMat4("projection", projection);
         ourShader.setMat4("view", view);
 
@@ -2059,8 +2064,11 @@ int main()
                         ? glm::vec3(0.35f, 0.35f, 0.38f)   // ash/grey once collected
                         : ringColors[shapeType] * pulse;
 
-                    ourShader.setBool("isEmissive", true);
+                    ourShader.setBool("isEmissive", emissiveLightOn);
                     ourShader.setFloat("alpha", 0.85f);
+                    // When emissive off, dim the ring color so they visibly "turn off"
+                    // (they then get rendered through normal Phong lighting).
+                    if (!emissiveLightOn) ringColor *= 0.18f;
 
                     switch (shapeType) {
                         case 0: ringCheckpoint.draw(ourShader, model, ringColor); break;
