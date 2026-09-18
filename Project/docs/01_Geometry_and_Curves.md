@@ -1,0 +1,239 @@
+# 01 — Geometry, Curves & Surfaces
+
+This document explains how every non-fractal object in the scene is built: which control points are fed in, what formulas are used, and how many triangles fall out of the meshing parameters. All sources cited live in [Primitives.h](../Primitives.h) and the construction calls live in [assignment.cpp](../assignment.cpp).
+
+Every primitive in the project shares the same vertex layout:
+
+```
+position(3) + normal(3) + texCoord(2)   ->   8 floats per vertex (stride = 32 bytes)
+```
+
+attribute locations: `0 = position`, `1 = normal`, `2 = uv`. This is why a single shader can draw all of them.
+
+---
+
+## 1. The Bezier Vase (Surface of Revolution)
+
+**Class:** `BezierSurface` in [Primitives.h:588](../Primitives.h#L588)
+**Built in:** [assignment.cpp:208-214](../assignment.cpp#L208-L214)
+
+### 1.1 Control points
+
+The vase profile is a **2D curve in the (radius, height) plane** with 4 control points (so it is a *cubic* Bezier, degree `n = 3`):
+
+```cpp
+std::vector<glm::vec2> vaseProfile = {
+    glm::vec2(0.8f, 0.0f),   // P0  — wide base
+    glm::vec2(1.0f, 0.3f),   // P1  — bulges out near the bottom
+    glm::vec2(0.3f, 0.7f),   // P2  — pinches in near the neck
+    glm::vec2(0.6f, 1.0f)    // P3  — flares again at the lip
+};
+bezierVase.init(vaseProfile, 20, 24);
+```
+
+`x` is the radius from the Y axis, `y` is the height. Plotting them:
+
+```
+  y
+  ↑
+1.0│           ● P3 (0.6, 1.0)   <- lip
+  │          /
+0.7│      ● P2 (0.3, 0.7)        <- pinched neck
+  │       \
+0.3│        ● P1 (1.0, 0.3)      <- belly
+  │       /
+0.0│ ● P0 (0.8, 0.0)             <- base
+  └────────────→ r
+```
+
+### 1.2 Bezier formula
+
+For `n = 3`, the Bernstein form evaluated at parameter `t ∈ [0,1]` is
+
+```
+B(t) = (1-t)³·P0 + 3·(1-t)²·t·P1 + 3·(1-t)·t²·P2 + t³·P3
+```
+
+implemented generically with binomial coefficients in [Primitives.h:605-613](../Primitives.h#L605-L613):
+
+```cpp
+for (int i = 0; i <= n; i++) {
+    float blend = binomial(n,i) * pow(t,i) * pow(1-t, n-i);
+    point += blend * controlPoints[i];
+}
+```
+
+The **tangent** uses the derivative form (degree `n-1` Bezier over the difference vectors `P_{i+1}-P_i`, scaled by `n`) — see [Primitives.h:616-626](../Primitives.h#L616-L626). The tangent is needed to compute outward normals when revolving.
+
+### 1.3 Sampling and revolving
+
+The constructor `init(profile, 20, 24)` means:
+
+| Parameter        | Value | Meaning                                       |
+| ---------------- | ----- | --------------------------------------------- |
+| `curveSegments`  | 20    | samples taken along the profile curve         |
+| `rotSegments`    | 24    | sweeps around the Y axis (15° each)           |
+
+So we get **21 profile points × 24 angular slices = 504 grid points**. Every grid quad becomes 2 triangles ⇒
+
+```
+20 × 24 × 2 = 960 triangles  →  2880 vertices
+```
+
+A point on the surface is generated as:
+
+```
+x = r(t)·cosθ
+y = h(t)
+z = -r(t)·sinθ
+```
+
+where `r(t)` and `h(t)` are the Bezier-evaluated radius and height ([Primitives.h:653-656](../Primitives.h#L653-L656)).
+
+### 1.4 Surface normals
+
+The 2D profile tangent `(tx, ty)` is rotated 90° to get the *outward* 2D normal `(ty, -tx)`, then revolved the same way as the position ([Primitives.h:663-668](../Primitives.h#L663-L668)). Doing it analytically (rather than via face normals) gives smooth shading without seams.
+
+---
+
+## 2. The Catmull-Rom Lamp (`SplineSurface`)
+
+**Class:** `SplineSurface` in [Primitives.h:720](../Primitives.h#L720)
+**Built in:** [assignment.cpp:218-226](../assignment.cpp#L218-L226)
+
+Where Bezier needs all control points to influence every position, **Catmull-Rom** splines actually pass *through* their control points, which makes them better for shapes you want to design point-by-point — like the lamp profile.
+
+### 2.1 Control points (6 of them)
+
+```cpp
+std::vector<glm::vec2> lampProfile = {
+    glm::vec2(0.30f, 0.00f),   // base disk
+    glm::vec2(0.15f, 0.10f),   // step in
+    glm::vec2(0.08f, 0.50f),   // narrow stem
+    glm::vec2(0.08f, 0.85f),   // top of stem
+    glm::vec2(0.25f, 0.92f),   // shade flare
+    glm::vec2(0.20f, 1.00f)    // top cap
+};
+splineLamp.init(lampProfile, 8, 20);
+```
+
+### 2.2 Catmull-Rom formula
+
+For each span between `P1` and `P2`, with neighbour points `P0`, `P3`, the position at local `t ∈ [0,1]` is
+
+```
+C(t) = ½ · ( 2P1
+            + (-P0 + P2)·t
+            + (2P0 − 5P1 + 4P2 − P3)·t²
+            + (−P0 + 3P1 − 3P2 + P3)·t³ )
+```
+
+See [Primitives.h:727-735](../Primitives.h#L727-L735). At span boundaries the same point is shared so the curve is C¹-continuous.
+
+With 6 control points there are **5 spans**, each subdivided into **8 segments**, giving **40 curve samples**, then **revolved 20 times** around Y. Triangle count:
+
+```
+40 × 20 × 2 = 1600 triangles
+```
+
+---
+
+## 3. The Ruled Canopy (`RuledSurface`)
+
+**Class:** `RuledSurface` in [Primitives.h:848](../Primitives.h#L848)
+**Built in:** [assignment.cpp:230-242](../assignment.cpp#L230-L242)
+
+A **ruled surface** is generated by sweeping a straight line between two arbitrary 3D curves. Concretely, if `T(u)` is the top curve and `B(u)` is the bottom curve, every surface point is
+
+```
+S(u, v) = (1 − v) · T(u) + v · B(u),     u, v ∈ [0,1]
+```
+
+Both `T` and `B` are themselves 4-point cubic Beziers in 3D, defined in the assignment:
+
+```cpp
+topCurve = {
+    (-3, 4, 0), (-1, 5, 0), (1, 5, 0), (3, 4, 0)   // arched
+};
+bottomCurve = {
+    (-3, 4, 4), (-1, 4.5, 4), (1, 4.5, 4), (3, 4, 4)   // shifted +Z
+};
+ruledCanopy.init(topCurve, bottomCurve, 20, 8);
+```
+
+So the canopy is an arched cubic Bezier ridge bridged by 8 straight ribs along its 20-sample length. The two control polygons differ only in their `z` and slightly in `y`, which gives the slight droop you see at the front of the canopy. Triangle count: `20 × 8 × 2 = 320 triangles`.
+
+---
+
+## 4. UV Sphere & Cone
+
+**Sphere** ([Primitives.h:421](../Primitives.h#L421)) is built from spherical coordinates with `30 stacks × 36 slices`:
+
+```
+x = r·sinφ·cosθ
+y = r·cosφ
+z = r·sinφ·sinθ
+```
+
+The position vector itself is the unit normal, so no extra normal computation is needed. Tris: `30 × 36 × 2 = 2160`.
+
+**Cone** ([Primitives.h:500](../Primitives.h#L500)) uses 36 sides for the lateral surface plus a fan for the base. The lateral normal is the side direction tilted upward by the slope, so the lighting along the cone is smooth.
+
+---
+
+## 5. The Torus Ring Checkpoint
+
+**Class:** `Torus` in [Primitives.h:201](../Primitives.h#L201)
+**Built in:** [assignment.cpp:245](../assignment.cpp#L245) — `ringCheckpoint.init(6.0f, 0.6f, 36, 18)`.
+
+A torus is parameterised by two angles `θ ∈ [0, 2π]` (around the main axis) and `φ ∈ [0, 2π]` (around the tube):
+
+```
+x = (R + r·cosφ)·cosθ
+y =       r·sinφ
+z = (R + r·cosφ)·sinθ
+```
+
+with `R = 6.0` (main radius, the ring you fly through) and `r = 0.6` (tube thickness). Mesh: `36 × 18 × 2 = 1296 triangles`. The normal is simply `(cosφ·cosθ, sinφ, cosφ·sinθ)` — already unit length ([Primitives.h:230-232](../Primitives.h#L230-L232)).
+
+---
+
+## 6. Polygon Ring (Hexagon / Triangle / Square / Pentagon)
+
+**Class:** `PolygonRing` in [Primitives.h:283](../Primitives.h#L283)
+
+A torus with a polygonal centerline instead of a circular one. Construction has three stages:
+
+1. **Polygon path generation** — for `sides = 6`, we walk the perimeter of a regular hexagon with `pathSubdivisions = 6` extra samples per side, giving `36` path points ([Primitives.h:312-326](../Primitives.h#L312-L326)). Each corner sits at angle `2π·k / sides` and intermediate samples are linearly interpolated.
+
+2. **Frenet frame at each path point** — using finite-difference tangents and a global up vector, we compute a `(normal, binormal)` basis with `cross` products ([Primitives.h:342-348](../Primitives.h#L342-L348)). This local frame is what lets us extrude the tube along a polygon (not just a circle).
+
+3. **Tube extrusion** — at each point we lay down a `tubeSegments`-vertex circle of radius `tubeRadius` in that local frame:
+
+   ```
+   p(φ) = center + tubeRadius · (cosφ · n + sinφ · b)
+   ```
+
+   ([Primitives.h:367-373](../Primitives.h#L367-L373)).
+
+For the in-game checkpoints with `sides=6, mainRadius=5, tubeRadius=0.5, tubeSegments=12, pathSubdivisions=6` you get `36 × 12 × 2 = 864 triangles` per ring.
+
+---
+
+## 7. Bus Body, Wheels, Skirts, Wings
+
+The bus is *not* curve-based — it is constructed from cubes/cylinders/cones in [Bus.h](../Bus.h). The interesting piece is that the bus owns one `Cube` whose VBO is **shared** with the Menger sponge VAO (see [MengerSponge.h:48](../MengerSponge.h#L48)) — instead of building cube geometry twice, the sponge points its own VAO at `bus.cube.VBO` and then attaches a per-instance offset attribute on top.
+
+---
+
+## 8. Why curves matter here
+
+The vase, the lamp and the canopy are the three "curve-driven" objects required by the assignment. Each of them demonstrates a *different* curve technique:
+
+| Object         | Curve type        | Control point count | What's special              |
+| -------------- | ----------------- | ------------------- | --------------------------- |
+| Vase           | Cubic Bezier      | 4                   | Approximating curve         |
+| Lamp           | Catmull-Rom      | 6                   | Interpolating curve         |
+| Canopy ribs    | Two cubic Beziers | 4 + 4               | Linear blend (ruled surface) |
+
+All three use the same revolve-or-blend-then-mesh pipeline, so once you understand the Bezier vase the rest is just substitution.

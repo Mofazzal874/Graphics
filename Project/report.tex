@@ -1,0 +1,699 @@
+\documentclass[12pt,a4paper]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{hyperref}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{float}
+\usepackage{titlesec}
+\usepackage{fancyhdr}
+\usepackage{enumitem}
+
+\lstset{
+    basicstyle=\ttfamily\small,
+    breaklines=true,
+    frame=single,
+    language=C++,
+    keywordstyle=\color{blue},
+    commentstyle=\color{gray},
+    stringstyle=\color{red},
+    numbers=left,
+    numberstyle=\tiny\color{gray},
+    numbersep=5pt,
+    tabsize=4,
+    showstringspaces=false
+}
+
+\pagestyle{fancy}
+\fancyhf{}
+\rfoot{\thepage}
+
+\begin{document}
+
+% ============================================================================
+% TITLE PAGE
+% ============================================================================
+\begin{titlepage}
+    \centering
+    \vspace*{1cm}
+
+    {\LARGE \textbf{CSE 4208: Computer Graphics Laboratory}}\\[0.5cm]
+    {\LARGE \textbf{3D Hover Bus City Simulation}}\\[1.5cm]
+
+    By\\[0.3cm]
+    {\Large \textbf{Md Mofazzal Hosen}}\\
+    Roll: 2007074\\[2cm]
+
+    % Placeholder for university logo
+    % \includegraphics[width=0.25\textwidth]{kuet_logo.png}\\[1.5cm]
+    \textit{[University Logo Placeholder]}\\[1.5cm]
+
+    \textbf{Instructors:}\\
+    Dr. Sk. Md. Masudul Ahsan\\
+    Professor\\[0.3cm]
+    Md. Tajmilur Rahman\\
+    Lecturer\\[1.5cm]
+
+    Department of Computer Science and Engineering\\
+    Khulna University of Engineering \& Technology\\[1cm]
+
+    \textbf{Department of Computer Science and Engineering}\\
+    \textbf{Khulna University of Engineering \& Technology}\\
+    \textbf{Khulna 9203, Bangladesh}\\
+    \textbf{April 2026}
+
+\end{titlepage}
+
+% ============================================================================
+% TABLE OF CONTENTS
+% ============================================================================
+\newpage
+\tableofcontents
+\newpage
+
+% ============================================================================
+% 1. OBJECTIVES
+% ============================================================================
+\section{Objectives}
+
+\begin{itemize}
+    \item To create a visually rich 3D hover bus simulation within a procedurally generated infinite city environment using Modern OpenGL 3.3.
+    \item To construct a detailed bus model using hierarchical modeling with primitive shapes (Cube, Cylinder, Torus) built from parametric triangle representations.
+    \item To implement multiple camera systems: Chase Camera (3rd person), Interior Camera (1st person), and Free Camera with orbit functionality.
+    \item To implement Pitch, Yaw, and Roll rotations for the camera along with a custom \texttt{lookAt} function.
+    \item To simulate a driving experience with acceleration, deceleration, steering, and vertical hover control (altitude gain/loss).
+    \item To implement multiple lighting models including Directional Light, Point Lights (4), and Spotlight with independent toggle controls.
+    \item To use the Phong shading model (fragment-level) and Gouraud shading model (vertex-level) for realistic illumination with toggleable ambient, diffuse, and specular components.
+    \item To apply texture mapping with multiple modes: pure texture, vertex-blended (Gouraud), fragment-blended (Phong), and multi-texture blending with configurable wrap and filter modes.
+    \item To implement advanced geometric objects using Bezier surfaces of revolution, Catmull-Rom spline surfaces, and Ruled surfaces.
+    \item To create a Menger Sponge fractal (3 iterations, 8000 sub-cubes) rendered via GPU instancing for collectible game elements.
+    \item To implement a recursive fractal forest with textured bark and alpha-cutout leaf billboards, rendered with GPU instancing.
+    \item To build a gamification system with ring checkpoints (Torus and PolygonRing shapes), fractal collectibles, collision detection, and a real-time HUD scoreboard.
+    \item To implement a skybox using cubemap textures for immersive environment rendering.
+    \item To incorporate AABB-based collision detection between the bus and city buildings/objects.
+    \item To gain hands-on experience in OpenGL 3.3 programmable pipeline, focusing on real-time rendering, GPU instancing, and optimization.
+\end{itemize}
+
+% ============================================================================
+% 2. INTRODUCTION
+% ============================================================================
+\section{Introduction}
+
+This project presents a comprehensive 3D hover bus simulation built with Modern OpenGL 3.3. The application places the user in control of a futuristic hover bus navigating through a procedurally generated infinite city environment, complete with buildings, street lamps, vases, canopies, fractal trees, and floating collectibles.
+
+The simulation leverages the OpenGL 3.3 programmable pipeline, utilizing custom vertex and fragment shaders to achieve realistic lighting, shading, and texture mapping. The project employs hierarchical modeling, where the bus is constructed entirely from primitive shapes---Cubes, Cylinders, and Tori---that are transformed via matrix operations to form a detailed vehicle model with interactive doors, a rotating fan, wings, jet engine flames, and hover pads.
+
+The city environment is generated procedurally using deterministic hashing, ensuring that the world is infinite and consistent. Buildings of various types (stacked cubes, tall towers, and cone-topped cylindrical towers) line both sides of a textured road. Bezier surface vases, spline-curve street lamps, and ruled-surface canopies add variety to the streetscape. A fractal forest of recursively branching trees with textured bark and alpha-cutout leaves borders the outskirts.
+
+User interactivity is central to the experience. The driving system supports acceleration, deceleration, steering, and vertical hover control. Three camera modes---Chase, Interior, and Free---allow exploration from multiple perspectives. A gamification layer adds ring checkpoints and floating Menger Sponge fractals as collectibles, with AABB collision detection against buildings penalizing careless driving.
+
+Advanced rendering techniques include GPU-instanced drawing for the fractal forest and Menger Sponges, cubemap skybox rendering, multi-texture blending with spatial transitions, and a bitmap-font HUD system. The combination of these elements creates an engaging, visually appealing, and technically comprehensive demonstration of Modern OpenGL capabilities.
+
+% ============================================================================
+% 3. OBJECT DEMONSTRATION
+% ============================================================================
+\section{Object Demonstration}
+
+\subsection{Chase Camera View (3rd Person)}
+
+% \includegraphics[width=\textwidth]{screenshots/chase_view.png}
+\textit{[IMAGE PLACEHOLDER: Screenshot showing the hover bus from behind in chase camera mode, with the city road, buildings on both sides, and skybox visible.]}
+
+\begin{center}
+    Figure 3.1: Chase Camera View --- 3rd person perspective behind the hover bus
+\end{center}
+
+\subsection{Interior Camera View (1st Person)}
+
+% \includegraphics[width=\textwidth]{screenshots/interior_view.png}
+\textit{[IMAGE PLACEHOLDER: Screenshot from inside the bus cockpit, showing the dashboard, windshield view of the road and city ahead.]}
+
+\begin{center}
+    Figure 3.2: Interior Camera View --- 1st person driver's seat perspective
+\end{center}
+
+\subsection{City Environment with Buildings and Road}
+
+% \includegraphics[width=\textwidth]{screenshots/city_buildings.png}
+\textit{[IMAGE PLACEHOLDER: Screenshot showing the procedurally generated city with textured buildings (stacked cubes, tall buildings with windows, cone-topped towers), textured road with dashed center divider, and sidewalks.]}
+
+\begin{center}
+    Figure 3.3: Procedural City Environment with varied building types and textured road
+\end{center}
+
+\subsection{Hover Bus with Jet Engine and Wings}
+
+% \includegraphics[width=\textwidth]{screenshots/bus_detail.png}
+\textit{[IMAGE PLACEHOLDER: Close-up screenshot of the hover bus showing the jet engine flames, wings, hover pads with glow effect, and textured body.]}
+
+\begin{center}
+    Figure 3.4: Hover Bus detail showing jet engine, wings, and hover pads
+\end{center}
+
+\subsection{Fractal Forest and Menger Sponge Collectibles}
+
+% \includegraphics[width=\textwidth]{screenshots/forest_sponge.png}
+\textit{[IMAGE PLACEHOLDER: Screenshot showing the fractal trees along the road outskirts with textured bark and leaf billboards, and floating Menger Sponge fractals above the road.]}
+
+\begin{center}
+    Figure 3.5: Fractal Forest (GPU-instanced trees) and floating Menger Sponge collectibles
+\end{center}
+
+\subsection{Ring Checkpoints and HUD Scoreboard}
+
+% \includegraphics[width=\textwidth]{screenshots/rings_hud.png}
+\textit{[IMAGE PLACEHOLDER: Screenshot showing the various ring checkpoint shapes (circle torus, hexagonal, triangular, square, pentagonal) floating above the road, with the bitmap-font HUD score display in the upper-right corner.]}
+
+\begin{center}
+    Figure 3.6: Ring Checkpoints (varied polygon shapes) and HUD Score Display
+\end{center}
+
+\subsection{Curve Objects: Bezier Vases, Spline Lamps, Ruled Canopies}
+
+% \includegraphics[width=\textwidth]{screenshots/curve_objects.png}
+\textit{[IMAGE PLACEHOLDER: Screenshot showing the Bezier surface vases along the road edges, spline-curve street lamps with emissive glow spheres, and ruled-surface canopy bus stop shelters.]}
+
+\begin{center}
+    Figure 3.7: Bezier Vases, Spline Street Lamps, and Ruled Surface Canopies
+\end{center}
+
+\subsection{Skybox and Lighting}
+
+% \includegraphics[width=\textwidth]{screenshots/skybox_lighting.png}
+\textit{[IMAGE PLACEHOLDER: Screenshot showing the cubemap skybox environment and the effect of different lighting configurations (directional, point, spot lights).]}
+
+\begin{center}
+    Figure 3.8: Skybox rendering and multi-light illumination of the scene
+\end{center}
+
+% ============================================================================
+% 4. KEY FUNCTIONALITY
+% ============================================================================
+\section{Key Functionality}
+
+\subsection{Driving Controls}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{ll}
+\toprule
+\textbf{Key} & \textbf{Description} \\
+\midrule
+W & Accelerate the bus forward \\
+S & Accelerate the bus backward (reverse) \\
+A & Steer left \\
+D & Steer right \\
+SPACE & Increase altitude (hover up) \\
+LEFT\_CONTROL & Decrease altitude (hover down) \\
+\bottomrule
+\end{tabular}
+\caption{Driving Controls}
+\end{table}
+
+\subsection{Camera Controls}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{ll}
+\toprule
+\textbf{Key} & \textbf{Description} \\
+\midrule
+V & Cycle camera mode (Chase $\rightarrow$ Interior $\rightarrow$ Free) \\
+M & Toggle mouse capture for FPS-style look-around \\
+K & Toggle between driving mode and free camera mode \\
+Arrow Keys & Move free camera (Up/Down/Left/Right) \\
+F (hold) & Orbit camera around the bus \\
+Scroll Wheel & Zoom in/out (adjust FOV) \\
+\bottomrule
+\end{tabular}
+\caption{Camera Controls}
+\end{table}
+
+\subsection{Lighting Controls}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{ll}
+\toprule
+\textbf{Key} & \textbf{Description} \\
+\midrule
+1 & Toggle Directional Light \\
+2 & Toggle Point Lights \\
+3 & Toggle Spot Light \\
+4 & Toggle Emissive Light (flames, glows) \\
+5 & Toggle Ambient component \\
+6 & Toggle Diffuse component \\
+7 & Toggle Specular component \\
+\bottomrule
+\end{tabular}
+\caption{Lighting Controls}
+\end{table}
+
+\subsection{Texture Controls}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{ll}
+\toprule
+\textbf{Key} & \textbf{Description} \\
+\midrule
+T & Cycle texture mode (Off / Pure / Gouraud / Phong / Multi-blend) \\
+8 & Cycle texture wrap mode (Repeat / Clamp / Mirrored Repeat) \\
+9 & Cycle texture filter mode (Linear / Nearest) \\
+0 & Toggle all textures ON/OFF \\
+\bottomrule
+\end{tabular}
+\caption{Texture Controls}
+\end{table}
+
+\subsection{Bus Interactive Features}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{ll}
+\toprule
+\textbf{Key} & \textbf{Description} \\
+\midrule
+B & Toggle front door open/close \\
+G & Toggle fan spinning \\
+L & Toggle bus interior light \\
+N & Toggle wings ON/OFF \\
+ESC & Close the application \\
+TAB & Print full status to console \\
+\bottomrule
+\end{tabular}
+\caption{Bus Interactive Features}
+\end{table}
+
+% ============================================================================
+% 5. THEORY AND PSEUDOCODE
+% ============================================================================
+\section{Theory and Pseudocode}
+
+\subsection{OpenGL 3.3 and the Programmable Pipeline}
+
+OpenGL is a cross-platform API for rendering 2D and 3D graphics. In OpenGL 3.3, the fixed-function pipeline is replaced with a programmable pipeline, providing fine-grained control over rendering. The pipeline is built around shaders written in GLSL (OpenGL Shading Language):
+
+\begin{itemize}
+    \item \textbf{Vertex Shaders}: Handle transformations and vertex-level operations. In this project, the vertex shader also computes Gouraud lighting when \texttt{textureMode == 2}, and applies per-instance transforms for GPU-instanced rendering of fractal objects.
+    \item \textbf{Fragment Shaders}: Handle per-pixel operations including Phong lighting, texture sampling, multi-texture blending, alpha-test cutout for leaf billboards, and emissive rendering for flames and glows.
+\end{itemize}
+
+\subsection{Hierarchical Modeling and Primitives}
+
+The bus is constructed using hierarchical modeling, where complex objects are built from simple primitives (Cube, Cylinder, Torus) through parent-child transformation chains. Each primitive is built from parametric triangle representations:
+
+\begin{itemize}
+    \item \textbf{Cube}: 36 vertices (6 faces $\times$ 2 triangles $\times$ 3 vertices), each with position, normal, and texture coordinates.
+    \item \textbf{Cylinder}: Parametric generation with configurable sector count, producing side faces, top cap, and bottom cap from triangle strips.
+    \item \textbf{Torus}: Parametric generation with configurable major radius, minor radius, main segments, and ring segments.
+    \item \textbf{Sphere}: UV sphere with configurable stacks and sectors for the football (texture-mapped sphere).
+    \item \textbf{Cone}: Parametric generation similar to cylinder but tapering to a point.
+\end{itemize}
+
+\textbf{Pseudocode: Hierarchical Bus Construction}
+\begin{lstlisting}[language=C++, caption={Hierarchical Bus Drawing}]
+FUNCTION drawBus(shader, parentTransform):
+    // Body
+    model = parentTransform * translate(0, 0.5, 0)
+                             * scale(10, 3, 3)
+    drawCube(shader, model, bodyColor, busBodyTexture)
+
+    // Wheels (4x) - relative to body
+    FOR each wheel position:
+        wheelModel = parentTransform * translate(wx, wy, wz)
+                                     * scale(r, r, r)
+        drawTorus(shader, wheelModel, wheelColor)
+
+    // Doors - animated rotation
+    doorModel = parentTransform * translate(doorPos)
+                                * rotate(doorAngle, Y_AXIS)
+                                * scale(doorSize)
+    drawCube(shader, doorModel, doorColor)
+
+    // Jet Engine - emissive flame
+    setEmissive(true)
+    flameModel = parentTransform * translate(jetPos)
+                                 * scale(flameSize * flicker)
+    drawCylinder(shader, flameModel, flameColor)
+    setEmissive(false)
+\end{lstlisting}
+
+\subsection{Custom lookAt Function}
+
+A custom \texttt{myLookAt} function replaces \texttt{glm::lookAt} to demonstrate understanding of the view matrix construction:
+
+\begin{lstlisting}[language=C++, caption={Custom lookAt Implementation}]
+FUNCTION myLookAt(eye, center, up):
+    f = normalize(center - eye)     // Forward vector
+    s = normalize(cross(f, up))     // Right vector
+    u = cross(s, f)                 // True up vector
+
+    result = identity_matrix
+    // Rotation part
+    result[0][0] = s.x; result[1][0] = s.y; result[2][0] = s.z
+    result[0][1] = u.x; result[1][1] = u.y; result[2][1] = u.z
+    result[0][2] = -f.x; result[1][2] = -f.y; result[2][2] = -f.z
+    // Translation part
+    result[3][0] = -dot(s, eye)
+    result[3][1] = -dot(u, eye)
+    result[3][2] = dot(f, eye)
+    RETURN result
+\end{lstlisting}
+
+\subsection{Camera System}
+
+Three camera modes are implemented, all using the custom \texttt{myLookAt}:
+
+\begin{enumerate}
+    \item \textbf{Chase Camera (3rd Person)}: Positioned behind and above the bus, automatically tracking the bus orientation. The camera offset is computed from the bus forward vector.
+    \item \textbf{Interior Camera (1st Person)}: Positioned at the driver's seat inside the bus, looking forward through the windshield. Supports mouse-look for free head rotation.
+    \item \textbf{Free Camera}: Independent FPS-style camera with pitch/yaw from mouse input, WASD-style movement via arrow keys, and orbit mode around the bus (hold F).
+\end{enumerate}
+
+\textbf{Pseudocode: Camera View Matrix}
+\begin{lstlisting}[language=C++, caption={Camera View Matrix Selection}]
+FUNCTION getViewMatrix():
+    busRenderPos = busPosition + hoverHeight + bobOffset + altitude
+
+    IF cameraMode == CHASE:
+        forward = getBusForward()
+        cameraPos = busRenderPos - forward * 18 + vec3(0, 5, 0)
+        lookTarget = busRenderPos + vec3(0, 1.5, 0) - forward * 2
+        RETURN myLookAt(cameraPos, lookTarget, UP)
+
+    IF cameraMode == INTERIOR:
+        cameraPos = busRenderPos + forward * (-3) + vec3(0, 1, 0)
+                    + right * (-0.6)
+        lookDir = computeFromPitchYaw(cameraYaw, cameraPitch)
+        RETURN myLookAt(cameraPos, cameraPos + lookDir, UP)
+
+    // FREE CAMERA
+    front = computeFromPitchYaw(cameraYaw, cameraPitch)
+    up = computeUp(front, cameraRoll)
+    RETURN myLookAt(cameraPos, cameraPos + front, up)
+\end{lstlisting}
+
+\subsection{Lighting and Shading}
+
+The project implements the Phong lighting model with three light types, computed in the fragment shader:
+
+\begin{itemize}
+    \item \textbf{Directional Light}: Simulates sunlight with direction $(-0.2, -1.0, -0.3)$.
+    \item \textbf{Point Lights (4)}: Positioned around the bus, each with distinct color (red, green, blue, white) and attenuation parameters.
+    \item \textbf{Spotlight}: Follows the camera direction with a $12.5^\circ$ cutoff cone.
+\end{itemize}
+
+Each light computes three components:
+\begin{align}
+    I_{ambient} &= k_a \cdot L_a \cdot C_{obj} \\
+    I_{diffuse} &= k_d \cdot L_d \cdot \max(\hat{n} \cdot \hat{l}, 0) \cdot C_{obj} \\
+    I_{specular} &= k_s \cdot L_s \cdot (\max(\hat{r} \cdot \hat{v}, 0))^{shininess}
+\end{align}
+
+where $\hat{n}$ is the surface normal, $\hat{l}$ is the light direction, $\hat{r}$ is the reflection vector, $\hat{v}$ is the view direction, and $C_{obj}$ is the object color.
+
+The project also supports Gouraud shading (vertex-level Phong) when \texttt{textureMode == 2}, where all lighting calculations are performed in the vertex shader and interpolated across fragments.
+
+\subsection{Texture Mapping}
+
+The project implements five texture modes:
+\begin{enumerate}[start=0]
+    \item \textbf{Off}: No texture, pure object color with Phong lighting.
+    \item \textbf{Pure Texture}: Texture color replaces object color entirely.
+    \item \textbf{Vertex-Blended (Gouraud)}: Texture modulated by vertex-interpolated lighting.
+    \item \textbf{Fragment-Blended (Phong)}: Texture modulated by per-fragment Phong lighting.
+    \item \textbf{Multi-Texture Blend}: Two textures blended spatially based on world position along a configurable axis, with smooth transition.
+\end{enumerate}
+
+Textures are loaded using the \texttt{stb\_image} library with configurable wrap modes (GL\_REPEAT, GL\_CLAMP\_TO\_EDGE, GL\_MIRRORED\_REPEAT) and filter modes (GL\_LINEAR, GL\_NEAREST). UV tiling is controlled via a \texttt{texScale} uniform for proportional texture mapping.
+
+\textbf{Pseudocode: Texture Loading}
+\begin{lstlisting}[language=C++, caption={Texture Loading}]
+FUNCTION loadTexture(path, wrapMode, filterMode):
+    data = stbi_load(path, &width, &height, &channels, 3)
+    IF width or height > MAX_TEXTURE_DIM:
+        data = downscale(data, MAX_TEXTURE_DIM)
+
+    glGenTextures(1, &textureID)
+    glBindTexture(GL_TEXTURE_2D, textureID)
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height,
+                 0, GL_RGB, GL_UNSIGNED_BYTE, data)
+    glGenerateMipmap(GL_TEXTURE_2D)
+    setWrapMode(wrapMode)
+    setFilterMode(GL_LINEAR_MIPMAP_LINEAR, filterMode)
+    RETURN textureID
+\end{lstlisting}
+
+\subsection{Bezier, Spline, and Ruled Surfaces}
+
+Three types of parametric curve-based surfaces are used to create decorative city objects:
+
+\begin{itemize}
+    \item \textbf{Bezier Surface of Revolution}: A cubic Bezier curve defines a profile that is revolved around the Y-axis. Used for decorative vases placed along road edges. The Bezier curve is evaluated using De Casteljau's algorithm.
+    \item \textbf{Catmull-Rom Spline Surface of Revolution}: A Catmull-Rom spline provides $C^1$ continuity through control points. Revolved around Y-axis to form smooth street lamp posts.
+    \item \textbf{Ruled Surface}: A surface formed by linearly interpolating between two space curves. Used for canopy/awning structures at bus stop shelters.
+\end{itemize}
+
+\subsection{Menger Sponge Fractal}
+
+The Menger Sponge is a 3D self-similar fractal. At each iteration, a cube is divided into $3 \times 3 \times 3 = 27$ sub-cubes and the 7 ``axis-cross'' cubes (face-centers and true center) are removed, leaving 20. After 3 iterations, $20^3 = 8000$ sub-cubes remain.
+
+The fractal is \textbf{baked once at startup} into a list of (offset, size) pairs and rendered via GPU instancing in a single draw call per sponge. Sponges float above the road as collectible game elements.
+
+\textbf{Pseudocode: Menger Sponge Construction}
+\begin{lstlisting}[language=C++, caption={Menger Sponge Fractal}]
+FUNCTION buildMengerSponge(iterations):
+    current = [{offset: (0,0,0), size: 1.0}]
+
+    FOR it = 0 TO iterations-1:
+        next = empty list
+        FOR each cube c in current:
+            s = c.size / 3
+            FOR x = 0 TO 2:
+              FOR y = 0 TO 2:
+                FOR z = 0 TO 2:
+                  centersOnAxis = count(x==1, y==1, z==1)
+                  IF centersOnAxis <= 1:  // Keep this sub-cube
+                    offset = c.offset + vec3((x-1)*s, (y-1)*s, (z-1)*s)
+                    next.add({offset, s})
+        current = next
+
+    // Upload instance data to GPU for instanced rendering
+    uploadInstanceBuffer(current)
+\end{lstlisting}
+
+\subsection{Fractal Forest (GPU-Instanced)}
+
+The fractal forest uses recursive branching to create realistic trees. At startup, all branch transforms and leaf transforms are baked into two instance buffers. At render time, the entire forest tile is drawn with just two instanced draw calls (one for branches, one for leaves).
+
+\begin{itemize}
+    \item \textbf{Branches}: Low-poly, flat-shaded cylinders with asymmetric radii for ragged bark appearance. Textured with bark texture.
+    \item \textbf{Leaves}: Crossed billboard quads (two perpendicular planes) with alpha-cutout leaf texture. The fragment shader discards transparent pixels.
+    \item \textbf{Recursion}: Each branch spawns 3 child branches with randomized yaw, pitch, and scale. Depth = 5 yields 364 branches per tree.
+\end{itemize}
+
+\textbf{Pseudocode: Fractal Tree Branching}
+\begin{lstlisting}[language=C++, caption={Recursive Fractal Tree}]
+FUNCTION bakeFractalBranch(branches, leaves, base, length,
+                           radius, depth, seed):
+    // Add this branch's transform
+    m = translate(base, vec3(0, length/2, 0))
+    m = scale(m, vec3(radius, length, radius))
+    branches.add(m)
+
+    tip = translate(base, vec3(0, length, 0))
+
+    IF depth <= 0:
+        // Add leaf cluster at branch tip
+        FOR k = 0 TO 11:
+            leafTransform = tip * randomOffset * randomRotation
+                            * scale(leafSize)
+            leaves.add(leafTransform)
+        RETURN
+
+    // Spawn 3 child branches
+    FOR i = 0 TO 2:
+        yaw = i * 120 + randomJitter
+        pitch = 22 + random * 22
+        child = rotate(tip, yaw, Y) * rotate(pitch, X)
+        bakeFractalBranch(branches, leaves, child,
+                         length*0.68, radius*0.62, depth-1, seed)
+\end{lstlisting}
+
+\subsection{Collision Detection}
+
+AABB (Axis-Aligned Bounding Box) collision detection is used to prevent the bus from passing through buildings and other solid objects. Each frame:
+
+\begin{enumerate}
+    \item All visible buildings and objects register their AABB into a collision list.
+    \item Before moving the bus, the new position is tested against all collision boxes.
+    \item If a collision is detected, the bus bounces back and the player loses points.
+\end{enumerate}
+
+\subsection{Gamification and Scoring}
+
+The scoring system involves:
+\begin{itemize}
+    \item \textbf{Ring Checkpoints}: Flying through ring shapes awards +5 (circle torus) or +3 (polygon rings). Five shape variants exist: circle, hexagon, triangle, square, pentagon.
+    \item \textbf{Menger Sponge Collectibles}: Flying through a sponge awards +15 points.
+    \item \textbf{Building Collisions}: Hitting a building penalizes -2 points with a cooldown timer.
+    \item \textbf{HUD Display}: Score is rendered using a custom bitmap font (3$\times$5 pixel glyphs) drawn with cubes in screen-space orthographic projection. Score changes trigger visual feedback (color flash and bounce animation).
+\end{itemize}
+
+\subsection{Skybox Rendering}
+
+A cubemap skybox is loaded from 6 individual face images and rendered as a unit cube at infinite distance. The view matrix translation is removed so the skybox stays centered on the camera. Depth function is set to \texttt{GL\_LEQUAL} to pass the depth test at $z = 1.0$.
+
+\subsection{Rendering Pipeline}
+
+The project uses modern OpenGL rendering techniques:
+\begin{itemize}
+    \item \textbf{Vertex Buffer Objects (VBOs)}: Store vertex data including positions, normals, and texture coordinates.
+    \item \textbf{Vertex Array Objects (VAOs)}: Store the VBO configuration for efficient state management.
+    \item \textbf{GPU Instancing}: Used for Menger Sponge and fractal forest rendering. Per-instance data (offset/scale or full mat4 transforms) is uploaded once and drawn via \texttt{glDrawArraysInstanced}.
+    \item \textbf{Transformation Pipeline}: Model $\rightarrow$ View $\rightarrow$ Projection matrices are combined in the vertex shader. Per-instance transforms are applied before the model matrix.
+\end{itemize}
+
+% ============================================================================
+% 6. TEXTURES USED
+% ============================================================================
+\section{Textures Used in the Project}
+
+The following texture images are used throughout the project, loaded via the \texttt{stb\_image} library and applied through the shader pipeline:
+
+\subsection{Bus Interior and Body Textures}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{lllp{5.5cm}}
+\toprule
+\textbf{Variable} & \textbf{File} & \textbf{Wrap Mode} & \textbf{Usage} \\
+\midrule
+\texttt{texFloor}     & \texttt{floor.jpg}     & GL\_REPEAT          & Bus interior floor \\
+\texttt{texFabric}    & \texttt{fabric.jpg}    & GL\_CLAMP\_TO\_EDGE & Bus seat upholstery \\
+\texttt{texWall}      & \texttt{wall.jpg}      & GL\_MIRRORED\_REPEAT & Bus interior walls and building facades \\
+\texttt{texBusBody}   & \texttt{busbody.jpg}   & GL\_CLAMP\_TO\_EDGE & Bus exterior body panels \\
+\bottomrule
+\end{tabular}
+\caption{Bus Textures}
+\end{table}
+
+\subsection{City Environment Textures}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{lllp{5.5cm}}
+\toprule
+\textbf{Variable} & \textbf{File} & \textbf{Wrap Mode} & \textbf{Usage} \\
+\midrule
+\texttt{texRoad}       & \texttt{road.jpg}       & GL\_REPEAT & Road surface \\
+\texttt{texGrass}      & \texttt{grass.jpg}      & GL\_REPEAT & Ground plane and outskirt grass fields \\
+\texttt{texContainer}  & \texttt{container2.png}  & GL\_REPEAT & Building facades (variant 1) \\
+\texttt{texEmoji}      & \texttt{emoji.png}      & GL\_CLAMP\_TO\_EDGE & Building facades (variant 2) \\
+\texttt{texStoneWall}  & \texttt{stone\_wall.jpg} & GL\_REPEAT & Cylindrical tower walls and building facades \\
+\texttt{texRoofTile}   & \texttt{roof\_tile.jpg}  & GL\_REPEAT & Cone-topped tower roofs \\
+\texttt{texBrickWall}  & \texttt{Seamless brick wall texture.jpg} & GL\_REPEAT & Building facades (variant 3) \\
+\bottomrule
+\end{tabular}
+\caption{City Environment Textures}
+\end{table}
+
+\subsection{Ground and Sidewalk Textures}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{lllp{5.5cm}}
+\toprule
+\textbf{Variable} & \textbf{File} & \textbf{Wrap Mode} & \textbf{Usage} \\
+\midrule
+\texttt{texCarpetTile} & \texttt{commercial-carpet-tiles.jpg} & GL\_REPEAT & Sidewalks, building foundations, and entry paths \\
+\texttt{texEarthTone}  & \texttt{earth-tone-tiles.png}        & GL\_REPEAT & Alternate sidewalk/foundation texture (alternates with carpet per segment) \\
+\bottomrule
+\end{tabular}
+\caption{Ground and Sidewalk Textures}
+\end{table}
+
+\subsection{Fractal Forest Textures}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{lllp{5.5cm}}
+\toprule
+\textbf{Variable} & \textbf{File} & \textbf{Wrap Mode} & \textbf{Usage} \\
+\midrule
+\texttt{texBark} & \texttt{tree\_bark.jpg} (fallback: \texttt{tree\_bark\_2.jpg}) & GL\_REPEAT & Fractal tree branch bark (tiled 4$\times$6) \\
+\texttt{texLeaf} & \texttt{leaf.png} (RGBA) & GL\_CLAMP\_TO\_EDGE & Leaf billboard alpha-cutout texture (crossed quads) \\
+\bottomrule
+\end{tabular}
+\caption{Fractal Forest Textures}
+\end{table}
+
+\subsection{Skybox Cubemap Textures}
+
+The skybox uses 6 individual face images loaded into a cubemap:
+
+\begin{table}[H]
+\centering
+\begin{tabular}{ll}
+\toprule
+\textbf{Cubemap Face} & \textbf{File} \\
+\midrule
++X (Right)  & \texttt{textures/skybox/right.jpg} \\
+-X (Left)   & \texttt{textures/skybox/left.jpg} \\
++Y (Top)    & \texttt{textures/skybox/top.jpg} \\
+-Y (Bottom) & \texttt{textures/skybox/bottom.jpg} \\
++Z (Front)  & \texttt{textures/skybox/front.jpg} \\
+-Z (Back)   & \texttt{textures/skybox/back.jpg} \\
+\bottomrule
+\end{tabular}
+\caption{Skybox Cubemap Face Images}
+\end{table}
+
+\subsection{Multi-Texture Blending}
+
+Several ground zones use \textbf{textureMode 4} (multi-texture blend), where two textures are spatially blended based on world-space Z-coordinate:
+\begin{itemize}
+    \item \textbf{Sidewalk zone}: Road texture $\leftrightarrow$ Carpet tile texture (smooth transition from road to pedestrian area)
+    \item \textbf{Outskirts zone}: Carpet tile texture $\leftrightarrow$ Grass texture (smooth transition from urban area to open fields)
+\end{itemize}
+
+The blend is controlled by \texttt{blendEdge} (center of transition) and \texttt{blendWidth} (transition zone width) uniforms in the fragment shader.
+
+% ============================================================================
+% CONCLUSION
+% ============================================================================
+\section{Conclusion}
+
+This project successfully demonstrates the capabilities of Modern OpenGL 3.3 in creating an interactive 3D simulation with a rich feature set. The hover bus simulation integrates:
+
+\begin{itemize}
+    \item \textbf{Hierarchical modeling} using primitive shapes (Cube, Cylinder, Torus, Sphere, Cone) built from parametric triangle representations.
+    \item \textbf{Multiple camera systems} including chase, interior, and free cameras with a custom lookAt implementation.
+    \item \textbf{Advanced lighting} with Phong and Gouraud shading models, supporting directional, point, and spot lights with per-component toggles.
+    \item \textbf{Comprehensive texture mapping} with five modes, configurable wrap/filter, multi-texture blending, and UV tiling.
+    \item \textbf{Parametric curve surfaces} including Bezier, Catmull-Rom spline, and ruled surfaces of revolution.
+    \item \textbf{3D fractals} including Menger Sponges and recursive fractal forests, both GPU-instanced for performance.
+    \item \textbf{Procedural city generation} with infinite, deterministic building placement.
+    \item \textbf{Gamification} with checkpoints, collectibles, collision detection, and real-time HUD scoring.
+    \item \textbf{Skybox rendering} using cubemap textures.
+\end{itemize}
+
+The simulation provides a robust foundation for exploring complex 3D graphics scenarios and serves as a comprehensive demonstration of real-time rendering techniques, shader programming, and interactive 3D application development.
+
+% ============================================================================
+% REFERENCES
+% ============================================================================
+\section{References}
+
+\begin{enumerate}
+    \item Learn OpenGL --- \url{https://learnopengl.com}
+    \item OpenGL Mathematics (GLM) Library --- \url{https://github.com/g-truc/glm}
+    \item stb\_image --- Single-file image loading library --- \url{https://github.com/nothings/stb}
+    \item GLFW --- Window and input management --- \url{https://www.glfw.org}
+    \item Provided in the classroom
+\end{enumerate}
+
+\end{document}
